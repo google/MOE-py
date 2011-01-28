@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block body %}
+
+<div class="g-section g-tpl-75-25 g-split">
+  <div class="g-unit g-first">
+    <div>
+      <h3 class="moe-list-header goog-inline-block">Projects</h3>
+    </div>
+
+    <div class="moe-project-name">
+      project_name last_updated
+    </div>
+    {% for info in infos %}
+    <div class="moe-project-name">
+      <a href="/project/{{info.name}}">{{info.name}}</a>
+      <span class="moe-score-{{info.scores.last_run.score}}">{{info.scores.last_run.value}}</span>
+    </div>
+    {% endfor %}
+
+    <div class="moe-project-create goog-inline-block">
+      <a href="/forms">Create a project...</a>
+    </div>
+  </div>
+  <div class="g-unit">
+    <div class="moe-help-box">
+      <h3 class="moe-top-header">
+        <span class="moe-list-header">Statistics</span>
+      </h3>
+      <div>{{ stats }}</div>
+
+      <h3 class="moe-top-header">
+        <span class="moe-list-header">Links</span>
+      </h3>
+
+    </div>
+    {% if json %}
+    <div class="moe-help-box">
+      <h3 class="moe-top-header">
+        <span class="moe-list-header">API Results</span>
+      </h3>
+
+      <code>
+      {{json}}
+      </code>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

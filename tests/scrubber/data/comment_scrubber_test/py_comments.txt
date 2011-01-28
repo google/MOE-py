@@ -1,0 +1,43 @@
+[
+  {
+    "filename": "test_file.py.txt",
+    "line": 1,
+    "char_index": 0,
+    "text": "#!/usr/bin/python2.4"
+  },
+
+  {
+    "filename": "test_file.py.txt",
+    "line": 2,
+    "char_index": 21,
+    "text": "# Copyright 2010 Google Inc. All Rights Reserved."
+  },
+
+  {
+    "filename": "test_file.py.txt",
+    "line": 3,
+    "char_index": 71,
+    "text": "# Author: jrand@google.com (John Randolph)"
+  },
+
+  {
+    "filename": "test_file.py.txt",
+    "line": 5,
+    "char_index": 115,
+    "text": "\"\"\"Test file docstring.\"\"\""
+  },
+
+  {
+    "filename": "test_file.py.txt",
+    "line": 8,
+    "char_index": 163,
+    "text": "\"\"\"Print Hello World.\n\n  Args:\n    gratuitous multi line comment\n  \"\"\""
+  },
+
+  {
+    "filename": "test_file.py.txt",
+    "line": 19,
+    "char_index": 318,
+    "text": "# stdout"
+  }
+]

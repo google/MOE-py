@@ -1,0 +1,39 @@
+indexes: 
+
+- kind: Process
+  properties:
+  - name: project
+  - name: last_seen
+    direction: desc
+
+- kind: Process
+  properties:
+  - name: project
+  - name: start_time
+
+- kind: Migration
+  properties:
+  - name: direction
+  - name: end_migrated_revision
+  - name: project
+  - name: start_migrated_revision
+  - name: last_seen
+
+- kind: Migration
+  properties:
+  - name: project
+  - name: last_seen
+
+- kind: Revision
+  properties:
+  - name: repository_name
+  - name: time
+    direction: desc
+  - name: first_seen
+    direction: desc
+
+- kind: Equivalence
+  properties:
+  - name: project
+  - name: sequence
+    direction: desc

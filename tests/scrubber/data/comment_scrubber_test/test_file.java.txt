@@ -1,0 +1,13 @@
+// Copyright 2010 Google Inc. All Rights Reserved. //
+
+/**
+ * This class prints Hello World!
+ * @author dnadasi@google.com (Daniel Nadasi)
+ * /*
+ * Here are some unicode characters: ¢€
+ */
+public class test_file {
+  public static void main(String[] args) {
+    System.out.println("Hello World!");
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "usernames_to_scrub": ["secretguy"],
+  "usernames_to_publish": ["publicguy"],
+  "scrub_unknown_users": true
+}

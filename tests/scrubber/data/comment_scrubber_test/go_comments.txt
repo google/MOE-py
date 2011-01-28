@@ -1,0 +1,29 @@
+[
+  {
+    "filename": "test_file.go.txt",
+    "line": 1,
+    "char_index": 0,
+    "text": "// Copyright 2010 Google Inc. All Rights Reserved."
+  },
+
+  {
+    "filename": "test_file.go.txt",
+    "line": 2,
+    "char_index": 51,
+    "text": "// Author: dnadasi@google.com (Daniel Nadasi)"
+  },
+
+  {
+    "filename": "test_file.go.txt",
+    "line": 3,
+    "char_index": 97,
+    "text": "// //"
+  },
+
+  {
+    "filename": "test_file.go.txt",
+    "line": 10,
+    "char_index": 147,
+    "text": "/*\n\t * This prints \"Hello World!\"\n\t * /**\n\t */"
+  }
+]

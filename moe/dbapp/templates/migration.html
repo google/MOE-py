@@ -1,0 +1,81 @@
+{# Copyright 2010 Google Inc. All Rights Reserved. #}
+
+{% comment %}
+  Migration info.
+
+  Displays information about the migration and allows the user to manage
+  the status of the migration.
+
+  Author: ahaven@google.com (Drew Haven)
+{% endcomment %}
+
+{% extends "base.html" %}
+
+{% block head %}
+{% include "javascript.html" %}
+{% endblock %}
+
+{% block title %}
+Project {{ migration.project.name }}: migration {{ migration.migration_id }}
+{% endblock %}
+
+{% block body %}
+
+<h2>Migration Info</h2>
+<div class="g-section g-tpl-75-25 g-split">
+  <div class="g-unit g-first">
+    {% include "migration_info_helper.html" %}
+  </div>
+  {% if result %}
+  <div class="g-unit">
+    <div class="moe-help-box">
+      <h3 class="moe-top-header">
+        <span>Result</span>
+      </h3>
+      {{ result }}
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<p/>
+<h3>Changelog</h3>
+<div class="g-section g-tpl-75-25 g-split">
+  <div class="g-unit g-first" style="width:50%">
+    {% include "edit_changelog_helper.html" %}
+  </div>
+</div>
+</p>
+
+{% if comments|length %}
+<p/>
+<h3>Comments</h3>
+{% for comment in comments %}
+<div class="g-section g-tpl-75-25 g-split">
+  <div class="g-unit g-first" style="width:50%">
+    {% include "edit_comment_helper.html" %}
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+
+<p/>
+<h3>Approval</h3>
+{% include "migration_approval_helper.html" %}
+</p>
+
+<p>
+{% if migration.diff or migration.link %}
+<div class="goog-zippy">
+  <h3>+ Diff</h3>
+{% endif %}
+{% if migration.link %}
+  <div>View at <a href='{{ migration.link }}'>{{ migration.link }}</a></div>
+{% endif %}
+{% if migration.diff %}
+  <pre>{{ migration.diff }}</pre>
+{% endif %}
+</div>
+</p>
+
+{% endblock %}

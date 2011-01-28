@@ -1,0 +1,50 @@
+[
+  {
+    "filename": "test_file.sh.txt",
+    "line": 1,
+    "char_index": 0,
+    "text": "#!/bin/bash"
+  },
+
+  {
+    "filename": "test_file.sh.txt",
+    "line": 2,
+    "char_index": 12,
+    "text": "# Copyright 2010 Google Inc. All Rights Reserved."
+  },
+
+  {
+    "filename": "test_file.sh.txt",
+    "line": 4,
+    "char_index": 79,
+    "text": "# This is a program."
+  },
+
+  {
+    "filename": "test_file.sh.txt",
+    "line": 6,
+    "char_index": 101,
+    "text": "# Here's a very line-noisy line."
+  },
+
+  {
+    "filename": "test_file.sh.txt",
+    "line": 7,
+    "char_index": 156,
+    "text": "# With a comment."
+  },
+
+  {
+    "filename": "test_file.sh.txt",
+    "line": 10,
+    "char_index": 205,
+    "text": "#foo} # Known false positive."
+  },
+
+  {
+    "filename": "test_file.sh.txt",
+    "line": 14,
+    "char_index": 259,
+    "text": "# Comment"
+  }
+]

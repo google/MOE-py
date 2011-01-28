@@ -1,0 +1,74 @@
+{# Copyright 2010 Google Inc. All Rights Reserved. #}
+
+{% comment %}
+  Project statistics.
+
+  Displays some statistics about the MOE project.
+
+  Author: ahaven@google.com (Drew Haven)
+{% endcomment %}
+
+{% extends "base.html" %}
+
+{% block title %}
+Project Statistics for <a href="/project/{{ project_name }}">
+{{ project_name }}</a>
+{% endblock %}
+
+{% block body %}
+{% if weekly_stats %}
+<h3>For the past week</h3>
+<p>
+manage_codebases was run {{ weekly_stats.times_run }} times for a total
+time of {{ weekly_stats.time_spent }}. There were
+{{ weekly_stats.migrations_started }} migrations started in that time.
+</p>
+<p>
+<table>
+  <tr>
+    <th>Exports</th>
+    <th>Imports</th>
+  </tr>
+  <tr>
+    <td>
+      <ul>
+        <li>Finished: {{ weekly_stats.exports_finished }}</li>
+        <li>Authors: {{ weekly_stats.export_authors }}</li>
+      </ul>
+    </td>
+    <td>
+      <ul>
+        <li>Finished: {{ weekly_stats.imports_finished }}</li>
+        <li>Authors: {{ weekly_stats.import_authors }}</li>
+      </ul>
+    </td>
+  </tr>
+</table>
+</p>
+{% endif %}
+
+{% if last_process %}
+<h3>Last run of manage_codebases</h3>
+<p>
+  Took place: <span class="moe-score-{{score.last_run.score}}">{{score.last_run.value}}</span>
+</p>
+<p><table border="1" cellpadding="5">
+  <tr>
+    <td>Process</td>
+    <td>{{ last_process.process_id }}</td>
+  <tr>
+  <tr>
+    <td>Start Time</td>
+    <td>{{ last_process.StartTimeString }}</td>
+  <tr>
+  <tr>
+    <td>End Time</td>
+    <td>{{ last_process.EndTimeString }}</td>
+  </tr>
+  <tr>
+    <td>Elapsed Time</td>
+    <td>{{ last_process.ElapsedTimeString }}</td>
+  </tr>
+</table></p>
+{% endif %}
+{% endblock %}

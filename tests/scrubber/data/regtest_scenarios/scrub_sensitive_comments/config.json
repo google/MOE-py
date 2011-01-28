@@ -1,0 +1,4 @@
+{
+  "scrub_sensitive_comments": false,
+  "sensitive_words": ["secrety"]
+}

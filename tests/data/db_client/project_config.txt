@@ -1,0 +1,6 @@
+{
+ "name": "foo",
+ "internal_repository": "not needed",
+ "public_repository": "not needed",
+ "filename": "foo/moe_config.txt"
+}

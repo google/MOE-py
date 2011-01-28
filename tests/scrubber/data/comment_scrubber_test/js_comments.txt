@@ -1,0 +1,16 @@
+[
+  {
+    "filename": "test_file.js.txt",
+    "line": 1,
+    "char_index": 0,
+    "text": "// Copyright 2010 Google Inc. All Rights Reserved. //"
+  },
+
+  {
+    "filename": "test_file.js.txt",
+    "line": 3,
+    "char_index": 55,
+    "text": "/**\n * /*\n * @fileoverview This file prints Hello World!\n * @author dnadasi@google.com (Daniel Nadasi)\n */"
+  }
+
+]

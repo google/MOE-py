@@ -1,0 +1,11 @@
+{
+ "name": "test",
+ "internal_repository": "not needed",
+ "public_repository": "not needed",
+ "export_strategy": {
+    "commit_strategy": "leave_pending",
+    "copy_metadata": 1,
+    "separate_revisions": 1,
+    "merge_strategy": "overwrite"
+ }
+}

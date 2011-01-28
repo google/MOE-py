@@ -1,0 +1,19 @@
+<!--
+<!--Copyright 2010 Google Inc. All Rights Reserved.
+Author: dnadasi@google.com (Daniel Nadasi)
+-->
+
+<!--Another Comment-->
+
+<html>
+  <head>
+    <title>Hello World!</title>
+  </head>
+  <body>
+    <script>// JS Comments, Oh no!!!
+    /** This alerts:
+        "Hello World!" */
+    window.onload = function() { alert(Hello World!); };
+    </script>
+  </body>
+</html>

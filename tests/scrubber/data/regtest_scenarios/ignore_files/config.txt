@@ -1,0 +1,1 @@
+ignore_files_re:"Bar.java"

@@ -1,0 +1,22 @@
+application: moe-db
+version: 2
+runtime: python
+api_version: 1
+
+inbound_services:
+- mail
+
+handlers:
+- url: /static
+  static_dir: static
+
+- url: /remote_api
+  script: $PYTHON_LIB/google/appengine/ext/remote_api/handler.py
+  login: admin
+
+- url: /_ah/mail/.+
+  script: main.py
+  login: admin
+
+- url: .*
+  script: main.py

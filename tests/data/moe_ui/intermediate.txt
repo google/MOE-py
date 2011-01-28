@@ -1,0 +1,3 @@
+BEGINNING: Fooing
+  Bar
+DONE: Fooing

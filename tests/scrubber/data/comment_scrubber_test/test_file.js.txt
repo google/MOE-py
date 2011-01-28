@@ -1,0 +1,11 @@
+// Copyright 2010 Google Inc. All Rights Reserved. //
+
+/**
+ * /*
+ * @fileoverview This file prints Hello World!
+ * @author dnadasi@google.com (Daniel Nadasi)
+ */
+
+goog.require('goog.stuff')
+
+document.write('Hello World!');

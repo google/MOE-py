@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<log>
+<logentry
+   revision="a100">
+<author>nobody_in_particular@somewhere.org</author>
+<date>3/14/1990</date>
+<msg>This is some sort of log
+</msg>
+</logentry>
+</log>

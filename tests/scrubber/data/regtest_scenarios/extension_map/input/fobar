@@ -1,0 +1,5 @@
+# This file should be treated as a Python file.
+# MOE:begin_strip
+foo()
+# MOE:end_strip
+bar()

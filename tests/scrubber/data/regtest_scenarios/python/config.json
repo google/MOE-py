@@ -1,0 +1,12 @@
+{
+  "python_module_renames": [
+    {"internal_module": "mycompany123.internal.foo.myothermodule",
+     "public_module": "mycompany.external.myothermodule", "as_name": "foo"},
+    {"internal_module": "mycompany123.internal",
+     "public_module": "mycompany.external"},
+    {"internal_module": "toplevel", "public_module": "pubtoplevel",
+     "as_name": "toplevel"}
+  ],
+  "python_module_removes": [{"import_module": "path_magic"}],
+  "python_shebang_replace": {"shebang_line": "#!/usr/bin/env python"}
+}

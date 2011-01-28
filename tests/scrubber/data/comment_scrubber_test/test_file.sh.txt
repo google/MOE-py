@@ -1,0 +1,14 @@
+#!/bin/bash
+# Copyright 2010 Google Inc. All Rights Reserved.
+
+run_my_program  # This is a program.
+
+# Here's a very line-noisy line.
+${foo_bar/%baz/quux}  # With a comment.
+
+echo "Not a # comment"
+echo ${#foo} # Known false positive.
+
+echo "foo \
+      bar"
+# Comment

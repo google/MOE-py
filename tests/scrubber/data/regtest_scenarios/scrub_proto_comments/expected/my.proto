@@ -1,0 +1,15 @@
+
+//
+// Protocol buffers use to communicate with client.
+//
+syntax = "proto2";
+
+package foo;
+
+option java_package = "my.public.api";
+
+enum CanonicalGenre {
+
+
+  ACTION_AND_ADVENTURE = 28;
+}

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+{# Copyright 2010 Google Inc. All Rights Reserved. #}
+{# The skeleton template.                          #}
+{# Author: nicksantos@google.com (Nick Santos)     #}
+
+<head>
+  <link rel="stylesheet" href="/static/common.css" />
+  <link rel="stylesheet" href="/static/g-base.css" />
+  <link rel="stylesheet" href="/static/g-fixed.css" />
+  <link rel="stylesheet" href="/static/g-ratio.css" />
+  <link rel="stylesheet" href="/static/dbapp.css" />
+
+    <title>MOE DB</title>
+
+  {% block head %}{% endblock %}
+</head>
+<body>
+
+<div id="header">
+  <div class="g-section g-tpl-50-50 g-split">
+    <div class="g-unit g-first">
+      <a id="logo" href="/">MOE DB</a>
+    </div>
+    <div class="g-unit">
+      {% block title %}Project Index{% endblock %}
+    </div>
+  </div>
+</div>
+
+<br/>
+
+{%block body%}
+ERROR
+{%endblock%}
+
+</body>
+</html>
+
+
+

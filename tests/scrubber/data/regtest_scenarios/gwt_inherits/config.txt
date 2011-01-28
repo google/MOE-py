@@ -1,0 +1,1 @@
+scrub_gwt_inherits:"com.google.internal.MyAnnotation"

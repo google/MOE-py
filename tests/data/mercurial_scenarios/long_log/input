@@ -1,0 +1,50 @@
+changeset:   0:02f4192acf50
+user:        ahaven@google.com
+date:        Wed Jun 23 11:20:20 2010 -0400
+files:       src/com/google/moe_test/Bar.java src/com/google/moe_test/Baz.java src/com/google/moe_test/Foo.java src/com/google/moe_test/Something.java
+description:
+Revision created by MOE tool push_codebase.
+MOE_MIGRATION=
+
+
+changeset:   1:5ae65629e544
+user:        ahaven@google.com
+date:        Wed Jun 23 15:20:26 2010 -0400
+files:       src/com/google/moe_test/Bar.java src/com/google/moe_test/Foo.java
+description:
+Change on 2010/06/23 by ahaven
+
+	Test submit 01.
+
+
+Change on 2010/06/23 by ahaven
+
+	Added config files.
+
+
+Change on 2010/06/23 by ahaven
+
+	Test change 02.
+
+
+
+Revision created by MOE tool push_codebase.
+MOE_MIGRATION=131
+
+
+changeset:   2:b05847911039
+tag:         tip
+user:        ahaven@google.com
+date:        Wed Jun 23 15:23:43 2010 -0400
+files:       src/com/google/moe_test/Baz.java
+description:
+Change on 2010/06/23 by ahaven
+
+	Test change 03.
+
+
+
+Revision created by MOE tool push_codebase.
+MOE_MIGRATION=133
+
+

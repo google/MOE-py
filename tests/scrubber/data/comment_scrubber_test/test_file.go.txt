@@ -1,0 +1,15 @@
+// Copyright 2010 Google Inc. All Rights Reserved.
+// Author: dnadasi@google.com (Daniel Nadasi)
+// //
+
+package main
+
+import "fmt"
+
+func main() {
+	/*
+	 * This prints "Hello World!"
+	 * /**
+	 */
+	fmt.Println("Hello World!")
+}

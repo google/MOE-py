@@ -1,0 +1,10 @@
+{
+  "js_directory_renames": [{
+    "internal_directory": "internal/foo",
+    "public_directory": "external/bar"
+  },
+  {
+    "internal_directory": "other_internal/fuzz",
+    "public_directory": "other_external/fizz"
+  }]
+}

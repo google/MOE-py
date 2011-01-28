@@ -1,0 +1,5 @@
+{
+ "name": "bar",
+ "internal_repository": "not needed",
+ "public_repository": "not needed"
+}

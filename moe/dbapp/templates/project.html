@@ -1,0 +1,183 @@
+{# Copyright 2010 Google Inc. All Rights Reserved. #}
+
+{% comment %}
+  Project data.
+
+  Visualizes the project data in two forms: as a bare-bones HTML table
+  with the raw data, and a pretty visual representation of the change
+  graph, inspired by code.google.com's visualization.
+
+  The visual representation is drawn by JavaScript after-load.
+
+  Author: dbentley@google.com (Dan Bentley)
+  Author: nicksantos@google.com (Nick Santos)
+{% endcomment %}
+
+{% extends "base.html" %}
+
+{% block title %}Project {{ project_name }}{% endblock %}
+
+{% block head %}
+{% include "javascript.html" %}
+<script>
+var recentHistory = {{ recent_history }};
+</script>
+{% endblock %}
+
+{% block body %}
+<div class="g-section g-tpl-33-67 g-split">
+<div class="g-unit g-first">
+
+{# Generate a basic HTML view of the raw data #}
+{% if pending_migrations %}
+<h2>Pending Migrations</h2>
+<p><a href="/project/{{ project_name }}/pending">Manage pending migrations</a></p>
+<hr>
+{% for migration in pending_migrations %}
+  <div>
+  <div class="goog-inline-block"
+       style="vertical-align: top; padding: 5px;">
+  <b>{{ migration.StatusAsString }}:</b>
+  <a href="/migration/{{ migration.migration_id }}">
+  {{migration.up_to_revision.rev_id}}
+  </a>
+  </div>
+  <div class="goog-inline-block">
+  {% include "migration_approval_helper.html" %}
+  </div>
+  </div>
+  <hr>
+{% endfor %}
+{% endif %}
+
+<br/>
+<h2>Recent History</h2>
+<div id='recent-history'></div>
+
+<div class='goog-zippy'>
+  <h2>+ Internal Revisions</h2>
+  
+  <div>
+    <ul>
+      {% for r in internal_revisions %}
+      <li>{{ r.rev_id }}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+
+<div class='goog-zippy'>
+  <h2>+ Public Revisions</h2>
+  <div>
+    <ul>
+      {% for r in public_revisions %}
+      <li>{{ r.rev_id }}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+
+<div class='goog-zippy'>
+  <h2>+ Equivalences</h2>
+  <table border=1>
+    <tr>
+      <td><h3>Internal Revision</h3></td>
+      <td><h3>Public Revision</h3></td>
+    </tr>
+    {% for e in equivalences %}
+    <tr>
+      <td>{{ e.internal_revision_obj.rev_id }}</td>
+      <td>{{ e.public_revision_obj.rev_id }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div class='goog-zippy'>
+  <h2>+ Exports</h2>
+  <table border=1>
+    <tr>
+      <td><h3>Up To</h3></td>
+      <td><h3>Submittted As</h3></td>
+    </tr>
+    {% for m in exports %}
+    <tr>
+      <td>{{ m.up_to_revision.rev_id }}</td>
+      <td>{{ m.submitted_as.rev_id }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div class='goog-zippy'>
+  <h2>+ Imports</h2>
+  <table border=1>
+    <tr>
+      <td><h3>Up To</h3></td>
+      <td><h3>Submitted As</h3></td>
+    </tr>
+    {% for m in imports %}
+    <tr>
+      <td>{{ m.up_to_revision.rev_id }}</td>
+      <td>{{ m.submitted_as.rev_id }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div id="moe-project-fix">
+<h2>Get MOE back on track</h2>
+<p>Sometimes, MOE messes up. Luckily, there are ways to fix it. 
+<a href="">Read the full story.</a></p>
+
+<ul>
+<li><p>Did you have to make a small, temporary change in the public
+codebase that shouldn't be brought back into the internal repository? (e.g.,
+fixing a character that MOE messed up). Tell MOE that it doesn't need to be
+brought back in here. (Though, this will also mean that any change
+before it will not be imported, either)
+<form action="/api/note_migration?out=html" method="post">
+  <input type="hidden" value="{{ project_name }}" name="project_name">
+  <input type="hidden" name="direction" value="import">
+  <div>Brought in public revision 
+    <input type="text" name="up_to_revision_id"></div>
+  <div>and submitted it internally as
+    <input type="text" name="submitted_as_id"></div>
+  <div><input type="submit" value="Note this migration"></div>
+</form>
+</p>
+</li>
+<li><p>Has it gone totally off the rails? Then get the codebases back
+in equivalence. (E.g., build the public tar, push it to svn, and
+commit the change) Then fill out this
+form: <form action="/api/note_equivalence?out=html" method="post">
+<input type="hidden" value="{{ project_name }}" name="project_name">
+  <div>Internal Revision:<input type="text" name="internal_revision_id"></div>
+  <div>Public Revision:<input type="text" name="public_revision_id"></div>
+  <div><input type="submit" value="Note Equivalence"></div>
+</form>
+</li>
+</div>
+
+</div> {# end g-unit g-first #}
+<div class="g-unit g-first" style='margin-left: 3em'>
+
+<div class="moe-help-box">
+  <h3 class="moe-top-header">
+    <span class="moe-list-header">Project Data</span>
+  </h3>
+  <div><b>Config</b></div>
+  <div>{{ project_config }}</div>
+  <p/>
+  <div>
+    <b><a href="/project/{{ project_name }}/statistics">
+        Project Statistics
+    </a></b>
+  </div>
+</div>
+
+</div> {# end g-unit #}
+</div> {# end g-section #}
+{% endblock body %}

@@ -1,0 +1,8 @@
+// First copyright
+code
+More code
+Final code
+/*
+ * This is a comment with things that look like MOE: directives but aren't
+ * really. MOE:FooBar.
+ */

@@ -1,0 +1,6 @@
+{
+  "java_renames": [
+   {"internal_package": "com.google.example",
+    "public_package": "com.othercompany.example"}
+  ]
+}

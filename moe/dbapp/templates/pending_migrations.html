@@ -1,0 +1,110 @@
+{# Copyright 2010 Google Inc. All Rights Reserved. #}
+
+{% comment %}
+  Pending migrations
+
+  Displays information about all pending migrations and allows the user
+  to manage their changelogs and statuses.
+
+  Author: ahaven@google.com (Drew Haven)
+{% endcomment %}
+
+{% extends "base.html" %}
+
+{% block head %}
+<script>
+
+var moe = moe || {};
+moe.approveMigration = function(migration_id) {
+  function $(id) {
+    return document.getElementById(id);
+  }
+
+  $('approve-changelog-' + migration_id).value = $('changelog-' + migration_id).value;
+  $('approve-' + migration_id).submit();
+};
+
+moe.openProjectPage = function(project_name) {
+  window.document.location.href = "/project/" + project_name
+};
+
+var migration_ids = new Array();
+moe.approveAllMigrations = function() {
+  var approvalOkay = confirm("Save all changelogs and approve all migrations?")
+  if (approvalOkay) {
+    for(i=0; i < migration_ids.length; i++) {
+      moe.approveMigration(migration_ids[i]);
+    }
+    alert("Migrations approved.")
+  }
+};
+
+</script>
+{% endblock %}
+
+{% block title %}
+Pending migrations for project {{ project_name }}
+{% endblock %}
+
+{% block body %}
+
+<h2>Pending Migrations</h2>
+
+{% if not migrations %}
+There are no pending migrations.
+{% endif %}
+
+{% if result %}
+<div class="moe-help-box">
+  <h3 class="moe-top-header">
+    <span>Result</span>
+  </h3>
+  {{ result }}
+</div>
+</div>
+{% endif %}
+
+{% for migration in migrations %}
+
+<script>
+migration_ids.push({{ migration.migration_id }});
+</script>
+
+<div class="g-section g-tpl-75-25 g-split">
+  <div class="g-unit g-first">
+    <div class="g-c">
+      <div class="g-section g-tpl-25-75 g-split">
+        <div class="g-unit g-first">
+          {% include "migration_info_helper.html" %}
+        </div>
+        <div class="g-unit">
+          {% include "edit_changelog_helper.html" %}
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="g-unit">
+    {% include "migration_approval_helper.html" %}
+  </div>
+</div>
+
+{% endfor %}
+
+<p>
+<form id="approve-all">
+  <input type="button" value="Approve all migrations" onclick="moe.approveAllMigrations()">
+</form>
+</p>
+
+<script>
+
+for(i=0; i < migration_ids.length; i++) {
+  var iframe = document.createElement('iframe');
+  iframe.name = "frame-" + migration_ids[i];
+  iframe.style.visibility = 'hidden';
+  document.body.appendChild(iframe);
+}
+
+</script>
+
+{% endblock %}

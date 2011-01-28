@@ -1,0 +1,12 @@
+// First copyright
+code
+// MOE:begin_strip
+Internal code!
+// MOE:end_strip
+More code
+/* MOE:begin_strip */one-line code/* MOE:end_strip */
+Final code
+/*
+ * This is a comment with things that look like MOE: directives but aren't
+ * really. MOE:FooBar.
+ */

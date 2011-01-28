@@ -1,0 +1,20 @@
+// Comment
+// MOE:insert func();
+// Another comment
+/* MOE:insert
+func1();
+func2();*/
+
+// MOE:insert void foo() {
+// MOE:insert   func3();
+// MOE:insert }
+
+/* MOE:insert
+void bar() {
+  func4();   
+}    
+*/
+
+/* MOE:insert void baz() {
+  func5();
+} */

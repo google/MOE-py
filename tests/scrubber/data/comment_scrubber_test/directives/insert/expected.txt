@@ -1,0 +1,18 @@
+// Comment
+func();
+// Another comment
+func1();
+func2();
+
+void foo() {
+  func3();
+}
+
+void bar() {
+  func4();   
+}
+
+
+void baz() {
+  func5();
+}

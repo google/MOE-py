@@ -1,0 +1,7 @@
+// Introduction
+
+class Foo {
+
+int newFunc() { return 1; }
+
+}

@@ -1,0 +1,11 @@
+// Introduction
+
+/**
+ *@author internal username
+ */
+
+class Foo {
+
+int newFunc() { return 1; }
+
+}

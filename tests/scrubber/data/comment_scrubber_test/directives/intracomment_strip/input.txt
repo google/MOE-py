@@ -1,0 +1,22 @@
+/*
+ * Here is public documentation
+ * MOE:begin_intracomment_strip
+ * Internal text
+ * MOE:end_intracomment_strip
+ * More text.
+ */
+
+/*
+ * Public
+ * MOE:begin_intracomment_strip
+ * Internal
+ * MOE:end_intracomment_strip
+ * More public
+ * MOE:begin_intracomment_strip
+ * Tricky second internal
+ * MOE:end_intracomment_strip
+ * Final public
+ * MOE:begin_intracomment_strip
+ * Final internal
+ * MOE:end_intracomment_strip
+ */

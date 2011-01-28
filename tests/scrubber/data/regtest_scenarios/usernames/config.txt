@@ -1,0 +1,3 @@
+username_to_scrub:"secretguy"
+username_to_publish:"publicguy"
+scrub_unknown_users:true

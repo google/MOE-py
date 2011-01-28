@@ -1,0 +1,5 @@
+{
+  "whitelist": [
+    {"filter": "SENSITIVE_WORD", "trigger": "http://our.wiki/", "filename": "*"}
+  ]
+}

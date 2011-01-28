@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}Project Editor{% endblock %}
+
+{% block body %}
+<h1>Create/Update a project:</h1>
+<form action="/api/update_project?out=html" method="post">
+  <div>Project Name: <input type="text" name="project_name"></div>
+  <div><input type="submit" value="create"></div>
+</form>
+
+<h1>Note an equivalence:</h1>
+<form action="/api/note_equivalence?out=html" method="post">
+  <div>Project Name: <input type="text" name="project_name"></div>
+  <div>Internal Revision:<input type="text" name="internal_revision"></div>
+  <div>Public Revision:<input type="text" name="public_revision"></div>
+  <div><input type="submit" value="note"></div>
+</form>
+
+<h1>Start Migration:</h1>
+<form action="/api/start_migration?out=html" method="post">
+  <div>Project Name: <input type="text" name="project_name"></div>
+  <input type="radio" name="direction" value="import"> Import
+  <input type="radio" name="direction" value="export"> Export
+  <div>Equivalence Internal Revision:<input type="text" name="equivalence_internal_revision"></div>
+  <div>Equivalence Public Revision:<input type="text" name="equivalence_public_revision"></div>      
+  <div>Base Internal Revision:<input type="text" name="base_internal_revision"></div>
+  <div>Base Public Revision:<input type="text" name="base_public_revision"></div>
+  <div><input type="submit" value="start"></div>
+</form>
+{% endblock body %}

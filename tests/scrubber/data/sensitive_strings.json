@@ -1,0 +1,14 @@
+{
+  "sensitive_words": [
+    "abc",
+    "testy",
+    "secrety",
+    "http://secret.wiki/",
+    "internal.website.com"
+  ],
+
+  "sensitive_res": [
+    "(?i)supersecret",
+    "\\Wsecret_?code_?1\\d*\\W"
+  ]
+}

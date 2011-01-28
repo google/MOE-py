@@ -1,0 +1,15 @@
+[
+  {
+    "filename": "test_file.php.txt",
+    "line": 2,
+    "char_index": 3,
+    "text": "/*\n   Test script for outputting date.\n   Author: jpincar\n*/"
+  },
+
+  {
+    "filename": "test_file.php.txt",
+    "line": 15,
+    "char_index": 195,
+    "text": "// print(date(\"F j, Y, g:ia\"));"
+  }
+]

@@ -1,0 +1,132 @@
+<?xml version="1.0"?>
+<log>
+<logentry
+   revision="15">
+<author>ahaven@google.com</author>
+<date>2010-06-07T22:42:21.095155Z</date>
+<msg>
+
+
+Revision created by MOE tool push_codebase.
+MOE_MIGRATION=
+</msg>
+</logentry>
+<logentry
+   revision="14">
+<author>ahaven@google.com</author>
+<date>2010-06-07T22:04:49.689584Z</date>
+<msg>
+
+
+Revision created by MOE tool push_codebase.
+MOE_MIGRATION=
+</msg>
+</logentry>
+<logentry
+   revision="13">
+<author>ahaven@google.com</author>
+<date>2010-06-07T21:57:52.905030Z</date>
+<msg>
+
+
+Revision created by MOE tool push_codebase.
+MOE_MIGRATION=
+</msg>
+</logentry>
+<logentry
+   revision="12">
+<author>ahaven@google.com</author>
+<date>2010-06-07T20:56:18.211533Z</date>
+<msg>
+
+
+Revision created by MOE tool push_codebase.
+MOE_MIGRATION=
+</msg>
+</logentry>
+<logentry
+   revision="11">
+<author>ahaven@google.com</author>
+<date>2010-06-07T20:43:56.231828Z</date>
+<msg>
+
+
+Revision created by MOE tool push_codebase.
+MOE_MIGRATION=
+</msg>
+</logentry>
+<logentry
+   revision="10">
+<author>ahaven@google.com</author>
+<date>2010-06-07T20:06:58.160847Z</date>
+<msg>
+
+
+Revision created by MOE tool push_codebase.
+MOE_MIGRATION=
+</msg>
+</logentry>
+<logentry
+   revision="9">
+<author>ahaven@google.com</author>
+<date>2010-06-07T18:56:21.322329Z</date>
+<msg>Deleted things
+</msg>
+</logentry>
+<logentry
+   revision="8">
+<author>ahaven@google.com</author>
+<date>2010-06-07T18:47:17.128185Z</date>
+<msg>Stuff...?
+</msg>
+</logentry>
+<logentry
+   revision="7">
+<author>ahaven@google.com</author>
+<date>2010-06-07T18:45:54.086801Z</date>
+<msg>Stuff
+</msg>
+</logentry>
+<logentry
+   revision="6">
+<author>ahaven@google.com</author>
+<date>2010-06-07T17:40:42.051892Z</date>
+<msg>Deleting file
+
+</msg>
+</logentry>
+<logentry
+   revision="5">
+<author>ahaven@google.com</author>
+<date>2010-06-07T16:51:00.112189Z</date>
+<msg>Update again.
+</msg>
+</logentry>
+<logentry
+   revision="4">
+<author>ahaven@google.com</author>
+<date>2010-06-07T16:50:25.910408Z</date>
+<msg>Yadda yadda
+</msg>
+</logentry>
+<logentry
+   revision="3">
+<author>ahaven@google.com</author>
+<date>2010-06-07T15:37:04.633635Z</date>
+<msg>Added a java file
+
+</msg>
+</logentry>
+<logentry
+   revision="2">
+<author>ahaven@google.com</author>
+<date>2010-06-07T15:35:35.206602Z</date>
+<msg>Test
+</msg>
+</logentry>
+<logentry
+   revision="1">
+<date>2010-06-07T15:12:45.022892Z</date>
+<msg>Initial directory structure.</msg>
+</logentry>
+</log>

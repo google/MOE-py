@@ -1,0 +1,40 @@
+{# Copyright 2010 Google Inc. All Rights Reserved. #}
+
+{% comment %}
+  UI for approving a migration. Accepts one argument, "migration",
+  which is the migration to render controls for.
+
+  Author: nicksantos@google.com (Nick Santos)
+{% endcomment %}
+
+<table style='border:1px'>
+  {% if migration.IsPending %}
+  <tr><td><form id="approve-migration" action="/api/approve_migration?out=html" method="post">
+    <input type="hidden"
+           value="{{ migration.migration_id }}" name="migration_id">
+    <input type="submit" value="Approve this migration">
+  </form></td></tr>
+  {% endif %}
+  {% if migration.IsApproved %}
+  <tr><td><form action="/api/unapprove_migration?out=html" method="post">
+    <input type="hidden"
+           value="{{ migration.migration_id }}" name="migration_id">
+    <input type="submit" value="Unapprove this migration">
+  </form></td></tr>
+  {% endif %}
+  {% if not migration.IsCanceled %}
+  <tr><td><form action="/api/cancel_migration?out=html" method="post">
+    <input type="hidden"
+           value="{{ migration.migration_id }}" name="migration_id">
+    <input type="submit" value="Cancel this migration">
+  </form></td></tr>
+  {% if not migration.IsSubmitted %}
+  <tr><td><form action="/api/finish_migration?out=html" method="post">
+    <input type="hidden"
+           value="{{ migration.migration_id }}" name="migration_id">
+    <input type="submit" value="Note finished migration"> <br>
+    Submitted revision: <input type="text" name="submitted_revision">
+  </form></td></tr>
+  {% endif %}
+  {% endif %}
+</table>

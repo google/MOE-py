@@ -1,0 +1,20 @@
+Change on 2010-03-31 00:00:00-07:00 by johnlenz
+
+	Remove now unneeded checks for label names when inspecting NAME nodes.
+
+	R=bowdidge
+	DELTA=6  (0 added, 4 deleted, 2 changed)
+
+Change on 2010-03-31 00:00:00-07:00 by johnlenz
+
+	Better message for the "arguments" problem until we can fix it.
+
+	R=bowdidge
+	DELTA=5  (5 added, 0 deleted, 0 changed)
+
+Change on 2010-03-31 00:00:00-07:00 by nicksantos
+
+	remove references to StringUtil, because it is not open-sourced.
+
+	R=agrieve
+	DELTA=2  (0 added, 1 deleted, 1 changed)

@@ -1,0 +1,10 @@
+def KeepThis1(x):
+  return x
+
+# MOE:begin_strip
+def StripThis(x):
+  return x
+# MOE:end_strip
+
+def KeepThis2(x):
+  return x

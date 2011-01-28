@@ -1,0 +1,23 @@
+{
+  "name": "createProject",
+  "public_repository": {
+    "type": "svn",
+    "url": "some/url/to/somewhere"
+  },
+  "internal_repository": {
+    "type": "svn",
+    "url": "some/url/somewhere/else"
+  },
+  "export_strategy": {
+    "commit_strategy": "leave_pending",
+    "copy_metadata": false,
+    "separate_revisions": false,
+    "merge_strategy": "overwrite"
+  },
+  "import_strategy": {
+    "commit_strategy": "leave_pending",
+    "copy_metadata": false,
+    "separate_revisions": false,
+    "merge_strategy": "merge"
+  }
+}

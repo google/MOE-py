@@ -1,0 +1,20 @@
+{# Copyright 2011 Google Inc. All Rights Reserved. #}
+
+{% comment %}
+  UI for displaying info about a migration.
+  Accepts one argument, "migration",
+  which is the migration to render controls for.
+
+  Author: nicksantos@google.com (Nick Santos)
+{% endcomment %}
+
+<div class="moe-help-box" style="width:25%">
+  <div><b>Direction</b></div>
+  <div>{{ migration.DirectionAsString }}</div>
+  <p/>
+  <div><b>Migrating up to Revision</b></div>
+  <div>{{ migration.up_to_revision.rev_id }}</div>
+  <p/>
+  <div><b>Status</b></div>
+  <div>{{ migration.StatusAsString }}</div>
+</div>

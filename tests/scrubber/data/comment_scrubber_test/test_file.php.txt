@@ -1,0 +1,19 @@
+<?
+/*
+   Test script for outputting date.
+   Author: jpincar
+*/
+?>
+<html>
+ <head>
+  <title>Sample embedded php script</title>
+ </head>
+ <body>
+  The date is: 
+<? 
+   print(date("j F, Y, g:ia"));
+// print(date("F j, Y, g:ia"));
+?>
+
+ </body>
+</html>

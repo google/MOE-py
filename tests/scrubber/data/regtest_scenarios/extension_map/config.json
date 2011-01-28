@@ -1,0 +1,7 @@
+{
+  "extension_map": [
+    ["fo{2}", ".cc"],
+    "# This matches a superset of the above, but ordering is significant.",
+    ["fo", ".py"]
+  ]
+}

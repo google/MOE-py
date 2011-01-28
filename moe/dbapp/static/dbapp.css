@@ -1,0 +1,97 @@
+
+body {
+  font: .8em/1.4 Arial, sans;
+  color: #4d4d4d;
+  background: #fff;
+  padding: 3px;
+}
+
+#header {
+  color: #000;
+  font-size: 120%;
+  font-weight: bold;
+  background-color: #c3d9ff;
+  padding: 0 4px 2px 8px;
+  margin-bottom: 5px;
+  border-radius: 3px;
+  -moz-border-radius: 3px;
+  -webkit-border-radius: 3px;
+}
+
+#header {
+  margin: -3px;
+  padding: 1px 2em;
+}
+
+#logo {
+  text-decoration: none;
+  color: #000;
+}
+
+.moe-list-header {
+}
+
+.moe-project-create {
+  border-top: 1px solid #4d4d4d;
+  padding-top: 0.5em;
+  margin-top: 0.5em;
+}
+
+.moe-top-header {
+  margin: 0;
+}
+
+.moe-project-name {
+  margin: 0.5em;
+}
+
+.moe-help-box {
+  background-color: #e5ecf9;
+  padding: 1em 2em;
+  margin-bottom: 1em;
+  border-radius: 3px;
+  -moz-border-radius: 3px;
+  -webkit-border-radius: 3px;
+}
+
+.moe-graph {
+  position:absolute;
+  overlow:visible;
+  margin-right:400px;
+}
+
+.moe-recent-history-internal-cell {
+  text-align:right;
+}
+
+.moe-recent-history-table, 
+.moe-recent-history-table td,
+.moe-recent-history-table tr {
+    border-bottom: 1px solid #CCC;
+}
+
+#moe-graphics-root {
+  margin: 1em;
+}
+
+/* worst score */
+.moe-score-1 {
+  color: black;
+  background: red;
+}
+
+.moe-score-2 {
+  color: black;
+  background: orange;
+}
+
+.moe-score-3 {
+  color: black;
+  background: yellow;
+}
+
+/* best score */
+.moe-score-4 {
+  color: white;
+  background: green;
+}

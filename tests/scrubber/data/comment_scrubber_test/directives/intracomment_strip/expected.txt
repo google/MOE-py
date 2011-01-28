@@ -1,0 +1,10 @@
+/*
+ * Here is public documentation
+ * More text.
+ */
+
+/*
+ * Public
+ * More public
+ * Final public
+ */

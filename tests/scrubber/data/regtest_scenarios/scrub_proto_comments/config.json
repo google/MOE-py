@@ -1,0 +1,4 @@
+{
+  "scrub_proto_comments": true,
+  "sensitive_words": ["secretheader"]
+}

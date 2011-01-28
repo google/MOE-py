@@ -1,0 +1,9 @@
+{
+  "rearranging_config": {
+    "mappings": [
+      {"input_prefix": "src",
+       "output_prefix": "output_src_dir"
+      }
+    ]
+  }
+}

@@ -1,0 +1,28 @@
+// MOE:begin_strip
+// secretheader goes here
+// MOE:end_strip
+//
+// Protocol buffers use to communicate with client.
+//
+syntax = "proto2";
+
+package foo;
+
+// MOE:begin_strip
+option java_package = "my.private.api";
+/* MOE:end_strip_and_replace
+option java_package = "my.public.api";
+*/
+
+enum CanonicalGenre {
+
+  // MOE:begin_strip
+  // The obsolete enum values are stripped so that they cannot be referenced
+  // in the client.
+  OBSOLETE_ACTION = 1 [(enum_compatibility).obsolete_since = V2];
+  // MOE:end_strip
+
+  ACTION_AND_ADVENTURE = 28
+      // MOE:begin_strip
+      [(enum_compatibility).valid_since = V2] /* MOE:end_strip */;
+}

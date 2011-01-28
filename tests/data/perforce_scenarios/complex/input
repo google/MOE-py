@@ -1,0 +1,29 @@
+Change 15160563 on 2010/03/31 by johnlenz@johnlenz-home-calendar
+
+	Remove now unneeded checks for label names when inspecting NAME nodes.
+
+	PRESUBMIT=passed
+	R=bowdidge
+	CC=js-compiler
+	DELTA=6  (0 added, 4 deleted, 2 changed)
+	OCL=15146918
+
+Change 15162185 on 2010/03/31 by johnlenz@johnlenz-home-src5
+
+	Better message for the "arguments" problem until we can fix it.
+
+	PRESUBMIT=passed
+	R=bowdidge
+	CC=js-compiler
+	DELTA=5  (5 added, 0 deleted, 0 changed)
+	OCL=15161926
+
+Change 15162758 on 2010/03/31 by nicksantos@nicksantos-gimme-shelter
+
+	remove references to StringUtil, because it is not open-sourced.
+
+	PRESUBMIT=passed
+	R=agrieve
+	CC=js-compiler
+	DELTA=2  (0 added, 1 deleted, 1 changed)
+	OCL=15161941

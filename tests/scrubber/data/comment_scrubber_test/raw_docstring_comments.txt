@@ -1,0 +1,15 @@
+[
+  {
+    "filename": "raw_docstring.py.txt",
+    "line": 1,
+    "text": "r\"\"\"foo\"\"\"",
+    "char_index": 0
+  },
+
+  {
+    "filename": "raw_docstring.py.txt",
+    "line": 2,
+    "text": "'''bar'''",
+    "char_index": 11
+  }
+]

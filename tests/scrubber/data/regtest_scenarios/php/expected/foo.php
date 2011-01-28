@@ -1,0 +1,4 @@
+<?
+$my_secret = 
+	   "CHANGEME";
+?>

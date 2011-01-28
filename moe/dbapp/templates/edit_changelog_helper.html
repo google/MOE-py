@@ -1,0 +1,21 @@
+{# Copyright 2011 Google Inc. All Rights Reserved. #}
+
+{% comment %}
+  UI for editing the changelog of a migration.
+  Accepts one argument, "migration",
+  which is the migration to render controls for.
+
+  Author: nicksantos@google.com (Nick Santos)
+{% endcomment %}
+
+<div class="goog-inline-block moe-save-area">
+<form action="/api/edit_changelog?out=html" method="post">
+<input type="hidden"
+     value="{{ migration.migration_id }}" name="migration_id">
+<div class="moe-help-box">
+  <textarea name="changelog" cols=80 rows=8>{{ migration.changelog }}</textarea><br/>
+  <input type="submit" value="Save">
+  <span class="moe-save-area-feedback"></span>
+</div>
+</form>
+</div>

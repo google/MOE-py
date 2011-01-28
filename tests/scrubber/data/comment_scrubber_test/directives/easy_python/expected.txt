@@ -1,0 +1,6 @@
+def KeepThis1(x):
+  return x
+
+
+def KeepThis2(x):
+  return x

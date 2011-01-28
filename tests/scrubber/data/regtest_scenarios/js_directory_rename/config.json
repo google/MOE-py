@@ -1,0 +1,6 @@
+{
+  "js_directory_rename": {
+    "internal_directory": "internal/foo",
+    "public_directory": "external/bar"
+  }
+}
