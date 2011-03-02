@@ -38,12 +38,15 @@ var recentHistory = {{ recent_history }};
   <div class="goog-inline-block"
        style="vertical-align: top; padding: 5px;">
   <b>{{ migration.StatusAsString }}:</b>
-  <a href="/migration/{{ migration.migration_id }}">
+  <a href="/migration/{{ migration.migration_id }}"
+     title="{{ migration.changelog|escape }}">
   {{migration.up_to_revision.rev_id}}
   </a>
   </div>
   <div class="goog-inline-block">
-  {% include "migration_approval_helper.html" %}
+  {% include "migration_approval_start.html" %}
+  {% include "migration_approval_end.html" %}
+  </form>
   </div>
   </div>
   <hr>
@@ -129,36 +132,19 @@ var recentHistory = {{ recent_history }};
 
 <div id="moe-project-fix">
 <h2>Get MOE back on track</h2>
-<p>Sometimes, MOE messes up. Luckily, there are ways to fix it. 
-<a href="">Read the full story.</a></p>
+<p>Sometimes, MOE messes up. Luckily, there are ways to fix it.</p>
 
 <ul>
-<li><p>Did you have to make a small, temporary change in the public
-codebase that shouldn't be brought back into the internal repository? (e.g.,
-fixing a character that MOE messed up). Tell MOE that it doesn't need to be
-brought back in here. (Though, this will also mean that any change
-before it will not be imported, either)
-<form action="/api/note_migration?out=html" method="post">
-  <input type="hidden" value="{{ project_name }}" name="project_name">
-  <input type="hidden" name="direction" value="import">
-  <div>Brought in public revision 
-    <input type="text" name="up_to_revision_id"></div>
-  <div>and submitted it internally as
-    <input type="text" name="submitted_as_id"></div>
-  <div><input type="submit" value="Note this migration"></div>
-</form>
-</p>
+<li>
+{% include "note_equivalence.html" %}
 </li>
-<li><p>Has it gone totally off the rails? Then get the codebases back
-in equivalence. (E.g., build the public tar, push it to svn, and
-commit the change) Then fill out this
-form: <form action="/api/note_equivalence?out=html" method="post">
-<input type="hidden" value="{{ project_name }}" name="project_name">
-  <div>Internal Revision:<input type="text" name="internal_revision_id"></div>
-  <div>Public Revision:<input type="text" name="public_revision_id"></div>
-  <div><input type="submit" value="Note Equivalence"></div>
-</form>
+<li>
+{% include "note_import_migration.html" %}
 </li>
+<li>
+{% include "note_export_migration.html" %}
+</li>
+</ul>
 </div>
 
 </div> {# end g-unit g-first #}
@@ -170,12 +156,6 @@ form: <form action="/api/note_equivalence?out=html" method="post">
   </h3>
   <div><b>Config</b></div>
   <div>{{ project_config }}</div>
-  <p/>
-  <div>
-    <b><a href="/project/{{ project_name }}/statistics">
-        Project Statistics
-    </a></b>
-  </div>
 </div>
 
 </div> {# end g-unit #}

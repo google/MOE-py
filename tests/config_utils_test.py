@@ -137,6 +137,11 @@ class ConfigUtilsTest(basetest.TestCase):
         config_utils.MakeConfigFilenameRelative(
             '/path/to/monolith_mirror/monolith/foo'))
 
+    self.assertEqual(
+        '/path/outside/monolithic_codebase/foo.txt',
+        config_utils.MakeConfigFilenameRelative(
+            '/path/outside/monolithic_codebase/foo.txt'))
+
   def testMakeConfigFilenameAbsolute(self):
     def MockCwd(value):
       self.stubs.Set(os, 'getcwd', lambda: value)
@@ -155,6 +160,10 @@ class ConfigUtilsTest(basetest.TestCase):
     self.assertEqual(
         '/home/user/srcs/monolith/foo',
         config_utils.MakeConfigFilenameAbsolute('foo'))
+
+    self.assertEqual(
+        '/path/to/foo.txt',
+        config_utils.MakeConfigFilenameAbsolute('/path/to/foo.txt'))
 
 
 if __name__ == '__main__':

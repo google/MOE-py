@@ -15,5 +15,8 @@ Author: dnadasi@google.com (Daniel Nadasi)
         "Hello World!" */
     window.onload = function() { alert(Hello World!); };
     </script>
+    <script type="text/javascript">
+      /* an unhelpful comment */
+    </script>
   </body>
 </html>

@@ -20,6 +20,8 @@ from moe import base
 from moe import config
 from moe import config_utils
 from moe import db_client
+from moe import moe_app
+from moe import moe_project
 import test_util
 
 FLAGS = flags.FLAGS
@@ -33,6 +35,7 @@ class MockDbClient(object):
 class DbClientTest(basetest.TestCase):
   def setUp(self):
     FLAGS.Reset()
+    moe_app.InitForTest()
     self.stubs = stubout.StubOutForTesting()
     self.stubs.Set(db_client, '_Get', None)
     self.stubs.Set(db_client, '_Post', None)
@@ -51,22 +54,21 @@ class DbClientTest(basetest.TestCase):
 
   def _GetStoredProject(self, unused_url, project_name):
     if project_name == 'foo':
-      result = config.MoeProject('foo')
+      result = config.MoeProjectConfig('foo')
       result.filename = 'foo/moe_config.txt'
       return result
     return None
 
   def assertSucceeds(self, create_project=False):
-    (project, db) = db_client.MakeProjectAndDbClient(
+    project = db_client.MakeProjectContext(
         create_project=create_project)
-    self.assertEqual(type(project), config.MoeProject)
-    self.assertEqual(type(db), MockDbClient)
+    self.assertEqual(type(project), moe_project.MoeProjectContext)
 
   def testNoArgs(self):
     self.assertRaisesWithRegexpMatch(
         base.Error,
         'Must specify at least one of --project or --project_config_file',
-        db_client.MakeProjectAndDbClient)
+        db_client.MakeProjectContext)
 
   def testConfigFileOnly(self):
     FLAGS.project_config_file = self.config_file_path
@@ -79,7 +81,7 @@ class DbClientTest(basetest.TestCase):
     self.assertRaisesWithRegexpMatch(
         base.Error,
         'Name "bar" from --project and name "foo" from config differ',
-        db_client.MakeProjectAndDbClient)
+        db_client.MakeProjectContext)
 
   def testCompatibleNames(self):
     FLAGS.project_config_file = self.config_file_path
@@ -98,7 +100,7 @@ class DbClientTest(basetest.TestCase):
     self.assertRaisesWithRegexpMatch(
         base.Error,
         'does not exist',
-        db_client.MakeProjectAndDbClient)
+        db_client.MakeProjectContext)
 
   def testNonExistentButCreate(self):
     self.AllowPost()

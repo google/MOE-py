@@ -39,6 +39,7 @@ Project {{ migration.project.name }}: migration {{ migration.migration_id }}
 </div>
 
 <p/>
+{% include "migration_approval_start.html" %}
 <h3>Changelog</h3>
 <div class="g-section g-tpl-75-25 g-split">
   <div class="g-unit g-first" style="width:50%">
@@ -61,7 +62,7 @@ Project {{ migration.project.name }}: migration {{ migration.migration_id }}
 
 <p/>
 <h3>Approval</h3>
-{% include "migration_approval_helper.html" %}
+{% include "migration_approval_end.html" %}
 </p>
 
 <p>

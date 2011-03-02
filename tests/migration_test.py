@@ -26,7 +26,7 @@ def setUp():
 class MigrationTest(basetest.TestCase):
 
   def testNothingToExport(self):
-    project = test_util.EmptyMoeProject()
+    project = test_util.EmptyMoeProjectConfig()
 
     internal_creator = test_util.StaticCodebaseCreator(
         {'1001': 'simple_python',
@@ -37,9 +37,10 @@ class MigrationTest(basetest.TestCase):
 
     config = actions.MigrationConfig(base.Migration.EXPORT,
                                      internal_creator,
-                                     project.internal_repository,
+                                     project.internal_repository_config,
                                      public_creator,
-                                     project.public_repository,
+                                     project.public_repository_config,
+                                     None,
                                      project.export_strategy)
     revisions = [ base.Revision('1002') ]
     export = actions.Migration(base.Revision('1001'),
@@ -52,7 +53,7 @@ class MigrationTest(basetest.TestCase):
     self.assertEqual(result, None)
 
   def testNothingToImport(self):
-    project = test_util.EmptyMoeProject()
+    project = test_util.EmptyMoeProjectConfig()
 
     internal_creator = test_util.StaticCodebaseCreator(
         {'1001': 'simple_python'})
@@ -63,9 +64,10 @@ class MigrationTest(basetest.TestCase):
 
     config = actions.MigrationConfig(base.Migration.IMPORT,
                                      public_creator,
-                                     project.public_repository,
+                                     project.public_repository_config,
                                      internal_creator,
-                                     project.internal_repository,
+                                     project.internal_repository_config,
+                                     None,
                                      project.import_strategy)
     revisions = [ base.Revision('2') ]
     action = actions.Migration(
@@ -80,7 +82,7 @@ class MigrationTest(basetest.TestCase):
     mock_editor = test_util.MockEditor()
     mock_client = test_util.MockClient(
       lambda migration_strategy, revisions: mock_editor)
-    project = test_util.EmptyMoeProject()
+    project = test_util.EmptyMoeProjectConfig()
 
     internal_creator = test_util.StaticCodebaseCreator(
         {'1001': 'simple_python',
@@ -92,9 +94,10 @@ class MigrationTest(basetest.TestCase):
 
     config = actions.MigrationConfig(base.Migration.EXPORT,
                                      internal_creator,
-                                     project.internal_repository,
+                                     project.internal_repository_config,
                                      public_creator,
-                                     project.public_repository,
+                                     project.public_repository_config,
+                                     None,
                                      project.export_strategy)
     revisions = [ base.Revision('1002', changelog='log') ]
     action = actions.Migration(
@@ -119,8 +122,8 @@ class MigrationTest(basetest.TestCase):
     mock_client = test_util.MockClient(
       lambda migration_strategy, revisions: mock_editor)
     report = base.MoeReport()
-    project = test_util.EmptyMoeProject()
-    project.public_repository = test_util.MockRepositoryConfig('',
+    project = test_util.EmptyMoeProjectConfig()
+    project.public_repository_config = test_util.MockRepositoryConfig('',
         repository=test_util.MockRepository(''))
 
     internal_creator = test_util.StaticCodebaseCreator(
@@ -131,12 +134,14 @@ class MigrationTest(basetest.TestCase):
         {'1': 'simple_python'},
          lambda: mock_client)
 
-    config = actions.MigrationConfig(base.Migration.EXPORT,
-                                     internal_creator,
-                                     project.internal_repository,
-                                     public_creator,
-                                     project.public_repository,
-                                     project.export_strategy)
+    config = actions.MigrationConfig(
+        base.Migration.EXPORT,
+        internal_creator,
+        project.internal_repository_config,
+        public_creator,
+        project.public_repository_config,
+        project.public_repository_config.MakeRepository()[0],
+        project.export_strategy)
     revisions = [ base.Revision('1002', changelog='log') ]
     action = actions.Migration(
         base.Revision('1001'), base.Revision('1'),
@@ -165,7 +170,7 @@ class MigrationTest(basetest.TestCase):
     mock_editor = test_util.MockEditor()
     mock_client = test_util.MockClient(
       lambda migration_strategy, revisions: mock_editor)
-    project = test_util.EmptyMoeProject()
+    project = test_util.EmptyMoeProjectConfig()
 
     internal_creator = test_util.StaticCodebaseCreator(
         {'1001': 'simple_python'},
@@ -177,9 +182,10 @@ class MigrationTest(basetest.TestCase):
 
     config = actions.MigrationConfig(base.Migration.IMPORT,
                                      public_creator,
-                                     project.public_repository,
+                                     project.public_repository_config,
                                      internal_creator,
-                                     project.internal_repository,
+                                     project.internal_repository_config,
+                                     None,
                                      project.import_strategy)
     revisions = [ base.Revision('2', changelog='log') ]
     action = actions.Migration(
@@ -204,7 +210,7 @@ class MigrationTest(basetest.TestCase):
     mock_editor = test_util.MockEditor()
     mock_client = test_util.MockClient(
       lambda migration_strategy, revisions: mock_editor)
-    project = test_util.EmptyMoeProject()
+    project = test_util.EmptyMoeProjectConfig()
 
     internal_creator = test_util.StaticCodebaseCreator(
         {'1001': 'simple_python',
@@ -218,10 +224,11 @@ class MigrationTest(basetest.TestCase):
 
     config = actions.MigrationConfig(base.Migration.EXPORT,
                                      internal_creator,
-                                     project.internal_repository,
+                                     project.internal_repository_config,
                                      public_creator,
                                      project.export_strategy,
-                                     project.public_repository)
+                                     None,
+                                     project.public_repository_config)
     revisions = [ base.Revision('1002', changelog='1002'),
                   base.Revision('1003', changelog='1003')]
     action = actions.Migration(
@@ -243,7 +250,7 @@ class MigrationTest(basetest.TestCase):
     mock_client = test_util.MockClient(
       lambda migration_strategy, revisions: mock_editor)
     report = base.MoeReport()
-    project = test_util.EmptyMoeProject()
+    project = test_util.EmptyMoeProjectConfig()
 
     internal_creator = test_util.StaticCodebaseCreator(
         {'1001': 'simple_python',
@@ -256,9 +263,10 @@ class MigrationTest(basetest.TestCase):
 
     config = actions.MigrationConfig(base.Migration.EXPORT,
                                      internal_creator,
-                                     project.internal_repository,
+                                     project.internal_repository_config,
                                      public_creator,
-                                     project.public_repository,
+                                     project.public_repository_config,
+                                     None,
                                      project.export_strategy)
     revisions = [ base.Revision('1002', changelog='1002')]
     action = actions.Migration(
@@ -274,7 +282,7 @@ class MigrationTest(basetest.TestCase):
     mock_editor = test_util.MockEditor()
     mock_client = test_util.MockClient(
         lambda migration_strategy, revisions: mock_editor)
-    project = test_util.EmptyMoeProject()
+    project = test_util.EmptyMoeProjectConfig()
 
     internal_creator = test_util.StaticCodebaseCreator(
         {'1001': 'simple_python',
@@ -289,9 +297,10 @@ class MigrationTest(basetest.TestCase):
 
     config = actions.MigrationConfig(base.Migration.EXPORT,
                                      internal_creator,
-                                     project.internal_repository,
+                                     project.internal_repository_config,
                                      public_creator,
-                                     project.public_repository,
+                                     project.public_repository_config,
+                                     None,
                                      project.export_strategy)
     revisions = [base.Revision('1002', changelog='Change 1: a change',
                                single_scrubbed_log='a change'),
@@ -314,7 +323,7 @@ class MigrationTest(basetest.TestCase):
     mock_editor = test_util.MockEditor()
     mock_client = test_util.MockClient(
         lambda migration_strategy, revisions: mock_editor)
-    project = test_util.EmptyMoeProject()
+    project = test_util.EmptyMoeProjectConfig()
     project.export_strategy.separate_revisions = True
 
     internal_creator = test_util.StaticCodebaseCreator(
@@ -330,9 +339,10 @@ class MigrationTest(basetest.TestCase):
 
     config = actions.MigrationConfig(base.Migration.EXPORT,
                                      internal_creator,
-                                     project.internal_repository,
+                                     project.internal_repository_config,
                                      public_creator,
-                                     project.public_repository,
+                                     project.public_repository_config,
+                                     None,
                                      project.export_strategy)
     revisions = [base.Revision('1002', changelog='Change 1: a change',
                                single_scrubbed_log='a change'),

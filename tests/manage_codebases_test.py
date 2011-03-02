@@ -14,6 +14,7 @@ from google.apputils import basetest
 from moe import actions
 from moe import base
 from moe import manage_codebases
+from moe import moe_app
 import test_util
 
 FLAGS = flags.FLAGS
@@ -21,6 +22,7 @@ FLAGS = flags.FLAGS
 
 def setUp():
   FLAGS.Reset()
+  moe_app.InitForTest()
   manage_codebases.DefineFlags(FLAGS)
 
 

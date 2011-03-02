@@ -103,3 +103,37 @@ class ScrubberInvokingTranslator(Translator):
 
       return codebase_utils.Codebase(output_tar_filename,
                                      project_space=self._to_project_space)
+
+
+class IdentityTranslator(Translator):
+  """A translator that translates by doing nothing."""
+
+  def __init__(self, from_project_space, to_project_space):
+    Translator.__init__(self)
+    self._from_project_space = from_project_space
+    self._to_project_space = to_project_space
+
+  def FromProjectSpace(self):
+    return self._from_project_space
+
+  def ToProjectSpace(self):
+    return self._to_project_space
+
+  def Translate(self, codebase):
+    task = moe_app.RUN.ui.BeginImmediateTask(
+        'translate',
+        'Translating from %s project space to %s (using identity translation)' %
+        (self._from_project_space, self._to_project_space))
+
+    with task:
+      if codebase.ProjectSpace() != self._from_project_space:
+        raise base.Error(
+            ('Attempting to translate Codebase %s from project space %s to %s, '
+             'but it is in project space %s') %
+            (codebase, self._from_project_space, self._to_project_space,
+             codebase.ProjectSpace()))
+
+      return codebase_utils.Codebase(
+          codebase.ExpandedPath(),
+          additional_files_re=codebase.AdditionalFilesRe(),
+          project_space=self._to_project_space)

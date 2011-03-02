@@ -25,5 +25,11 @@
     "line": 14,
     "char_index": 237,
     "text": "/** This alerts:\n        \"Hello World!\" */"
+  },
+  {
+    "filename": "test_file.html.txt",
+    "line": 12,
+    "char_index": 393,
+    "text": "/* an unhelpful comment */"
   }
 ]

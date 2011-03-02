@@ -153,7 +153,7 @@ def main(args):
                   'infrastructure/yuicompressor', 'jsmin', '' 'BUILD', 'CONFIG',
                   'CORE', 'OWNERS', 'PRESUBMIT.py', 'QUEUE', 'README', '/bin/',
                   '/docs/']
-  ignore_files_re = ['|'.join(re.escape(f)) for f in ignore_files]
+  ignore_files_re = '|'.join(re.escape(f) for f in ignore_files)
 
   config = scrubber.ScrubberConfigFromJson(
       codebase,

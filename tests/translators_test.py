@@ -42,10 +42,34 @@ class TranslatorsTest(basetest.TestCase):
       # Patches appreciated!
       return
     difference = base.AreCodebasesDifferent(
-        generated_codebase.ExpandedPath(),
-        test_util.TestResourceFilename(
-            'translators/simple/expected/'))
+        generated_codebase,
+        codebase_utils.Codebase(test_util.TestResourceFilename(
+            'translators/simple/expected/')))
     self.assertFalse(difference)
+
+  def testIdentityRemembersAdditionalFilesRe(self):
+    t = translators.IdentityTranslator('public', 'internal')
+    input_dir = test_util.TestResourceFilename(
+        'translators/additional_files/input/')
+    input_codebase = codebase_utils.Codebase(
+        path=input_dir,
+        additional_files_re='bar')
+    generated_codebase = t.Translate(input_codebase)
+
+    equivalent_codebase = codebase_utils.Codebase(
+        path=test_util.TestResourceFilename(
+            'translators/without_additional_file/'))
+    without_additional_files_re = codebase_utils.Codebase(
+        path=input_dir)
+
+    self.assertFalse(base.AreCodebasesDifferent(
+        input_codebase, generated_codebase))
+
+    self.assertFalse(base.AreCodebasesDifferent(
+        generated_codebase, equivalent_codebase))
+
+    self.assert_(base.AreCodebasesDifferent(
+        without_additional_files_re, equivalent_codebase))
 
 
 if __name__ == '__main__':

@@ -97,6 +97,9 @@ class Process(db.Model):
              'new_migrations': self.new_migrations }
 
 
+# These constants must be kept in sync with moe's base.py
+# TODO(dbentley): refactor into constants.py?
+
 # enum for direction
 DIRECTION_EXPORT = 0
 DIRECTION_IMPORT = 1
@@ -112,6 +115,12 @@ STATUS_VALUES = [STATUS_ACTIVE, STATUS_SUBMITTED, STATUS_CANCELED,
                  STATUS_APPROVED]
 STATUS_NAMES = ['Pending', 'Submitted', 'Canceled', 'Approved']
 
+# enum for Equivalence Verification
+VERIFICATION_UNVERIFIED = 0
+VERIFICATION_VERIFIED = 1
+VERIFICATION_INVALID = 2
+
+VERIFICATION_NAMES = ['Unverified', 'Verified', 'Invalid']
 
 INTERNAL=0
 PUBLIC=1
@@ -140,6 +149,7 @@ class Equivalence(db.Model):
       Revision, collection_name='internal_set')
   public_revision_obj = db.ReferenceProperty(
       Revision, collection_name='public_set')
+  verification_status = db.IntegerProperty(default=VERIFICATION_UNVERIFIED)
 
   # Old code
   internal_revision = db.StringProperty()
@@ -150,6 +160,7 @@ class Equivalence(db.Model):
     data = {
         'internal_revision': self.internal_revision_obj.DictForJson(),
         'public_revision': self.public_revision_obj.DictForJson(),
+        'verification_status': self.verification_status,
         }
     return data
 

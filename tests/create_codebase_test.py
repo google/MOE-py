@@ -17,6 +17,7 @@ import gflags as flags
 from google.apputils import basetest
 
 from moe import create_codebase
+from moe import moe_app
 import test_util
 
 
@@ -29,6 +30,7 @@ CREATE = create_codebase.CreateCodebaseCmd('create_codebase', FLAGS)
 class CreateCodebaseTest(basetest.TestCase):
   def setUp(self):
     FLAGS.Reset()
+    moe_app.InitForTest()
 
   def RunScenario(self, config_file_name, codebase_expectation):
     # Mock out

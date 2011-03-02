@@ -1,0 +1,6 @@
+{
+  "string_replacements": [
+    {"original": "foo", "replacement": "bar"},
+    {"original": "baz.*", "replacement": "bazscrubbed"}
+  ]
+}

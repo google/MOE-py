@@ -10,6 +10,7 @@ import copy
 
 from moe import base
 from moe import codebase_utils
+from moe import config
 from moe import db_client
 from moe import merge_codebases
 from moe import moe_app
@@ -23,8 +24,10 @@ class Action(object):
     """Initialize.
 
     Args:
-      project: config.MoeProject
+      project: config.MoeProjectConfig
     """
+    assert isinstance(project, config.MoeProjectConfig), (
+        'Expected MoeProjectConfig')
     self.project = project
 
   def Perform(self, **unused_kwargs):
@@ -112,7 +115,7 @@ class EquivalenceCheck(Action):
     Args:
       internal_revision: str, the internal revision
       public_revision: str, the public revision
-      project: config.MoeProject, the project to test for it in
+      project: config.MoeProjectConfig, the project to test for it in
       result_dispatch: function, will be called with the results of
                        Perform and must return a list of actions
 
@@ -148,13 +151,7 @@ class EquivalenceCheck(Action):
       codebases_differ = None
       if not self.project.manual_equivalence_deltas:
         codebases_differ = base.AreCodebasesDifferent(
-            generated.ExpandedPath(),
-            public.ExpandedPath(),
-            noisy_files_re=self.project.noisy_files_re,
-            additional_codebase2_files_re=
-                self.project.public_repository.additional_files_re,
-            check_all=True,
-            temp_dir=temp_dir)
+            generated, public, noisy_files_re=self.project.noisy_files_re)
 
       return self.result_dispatch(self,
                                   codebases_differ=codebases_differ,
@@ -226,6 +223,7 @@ class MigrationConfig(object):
   def __init__(self, direction, source_codebase_creator,
                source_repository_config,
                target_codebase_creator, target_repository_config,
+               target_repository,
                migration_strategy):
     """Construct.
 
@@ -235,6 +233,7 @@ class MigrationConfig(object):
       source_repository_config: base.RepositoryConfig
       target_codebase_creator: codebase_utils.CodebaseCreator
       target_repository_config: base.RepositoryConfig
+      target_repository: base.SourceControlRepository
       migration_strategy: config.MigrationStrategy
     """
     self.direction = direction
@@ -242,6 +241,7 @@ class MigrationConfig(object):
     self.source_repository_config = source_repository_config
     self.target_codebase_creator = target_codebase_creator
     self.target_repository_config = target_repository_config
+    self.target_repository = target_repository
     self.migration_strategy = migration_strategy
 
   def IsExport(self):
@@ -269,7 +269,7 @@ class Migration(Action):
       previous_revision: base.Revision
       applied_against: base.Revision
       revisions: list of base.Revision, the revisions to export
-      project: config.MoeProject
+      project: config.MoeProjectConfig
       migration_config: MigrationConfig, the configuration for this migration
       mock_migration: bool, whether to only mock the migrations (i.e. inform
                       the database only)
@@ -310,200 +310,203 @@ class Migration(Action):
 
     up_to_revision = migration_revisions[-1]
 
-    if remaining_revisions:
-      result_migration = Migration(
-          up_to_revision,
-          self.applied_against,
-          remaining_revisions,
-          self.project,
-          self.migration_config, self.mock_migration, 1)
-      result_migration_list = [result_migration]
-      result = StateUpdate(actions=[result_migration] + actions)
-    else:
-      result_migration = None
-      result_migration_list = []
-      result = None
+    task = moe_app.RUN.ui.BeginIntermediateTask(
+        'migrate',
+        'Migrating up to revision %s by applying it against %s' %
+        (up_to_revision.rev_id, self.applied_against.rev_id))
 
-    previous_source = self.migration_config.source_codebase_creator.Create(
-        self.previous_revision.rev_id)
-    try:
-      source = self.migration_config.source_codebase_creator.Create(
-          up_to_revision.rev_id)
-    except base.CodebaseCreationError:
-      if not remaining_revisions:
-        # This is an error at the last revision
-        # It might be better if we just marked it as an error.
-        raise
-      # In this case, we can't migrate the up_to_revision. So instead, we
-      # fold it into the next migration.
-      action = Migration(
-          self.previous_revision,
-          self.applied_against,
-          self.revisions,
-          self.project,
-          self.migration_config, self.mock_migration,
-          self.num_revisions_to_migrate + 1)
-      return StateUpdate(actions=[action] + actions)
-
-    should_migrate = bool(base.AreCodebasesDifferent(
-        previous_source.ExpandedPath(), source.ExpandedPath(),
-        noisy_files_re=self.project.noisy_files_re))
-    if not should_migrate:
-      return result
-
-    migration_strategy = copy.copy(self.migration_config.migration_strategy)
-
-    if migration_strategy.merge_strategy == base.ERROR:
-      raise base.Error('Attempted %s invalid with merge strategy.' %
-                       self.migration_config.direction)
-
-    migration = db.FindMigration(up_to_revision, abbreviated=False)
-    if (not migration or
-        (migration.status == base.Migration.CANCELED)):
-      changelog = base.ConcatenateChangelogs(migration_revisions)
-      creator = self.migration_config.source_codebase_creator
-      migration_id = db.StartMigration(
-          self.migration_config.direction,
-          up_to_revision,
-          changelog=changelog,
-          migrated_revisions=migration_revisions)
-    elif migration.status == base.Migration.SUBMITTED:
-      # TODO(dbentley): this should never happen
-      find_step = moe_app.RUN.report.AddStep(
-          'migrate_changes', 'find_migration')
-      find_step.SetResult('%s of revisions [%s, %s] has '
-                          'already been submitted in migration %s.' %
-                          (self.migration_config.direction,
-                           self.start_migrated_revision,
-                           end_migrated_revision,
-                           migration.migration_id))
-      return result
-    else:
-      changelog = migration.changelog
-      migration_id = migration.migration_id
-      if migration.status == base.Migration.APPROVED:
-        # TODO(dbentley): should we do this only if it's somewhere in the
-        # project config?
-        migration_strategy.commit_strategy = base.COMMIT_REMOTELY
-
-    if self.mock_migration:
-      return result
-
-    base_codebase = self.migration_config.target_codebase_creator.Create(
-        self.applied_against.rev_id)
-    merge_context = None
-    if migration_strategy.merge_strategy == base.MERGE:
-      merge_args = dict(previous_codebase=previous_source)
-      if self.migration_config.IsExport():
-        merge_args['generated_codebase'] = source
-        merge_args['public_codebase'] = base_codebase
-      elif self.migration_config.IsImport():
-        merge_args['generated_codebase'] = base_codebase
-        merge_args['public_codebase'] = source
-      moe_app.RUN.report.AddStep(
-          'migrate_changes', 'merge_codebases', cmd_args=merge_args)
-      merge_config = merge_codebases.MergeCodebasesConfig(**merge_args)
-      merge_context = merge_codebases.MergeCodebasesContext(
-          merge_config)
-      merge_context.Update()
-      p_s = self.migration_config.target_codebase_creator.ProjectSpace()
-      codebase_to_push = codebase_utils.Codebase(
-          merge_context.config.merged_codebase,
-          expanded_path=merge_context.config.merged_codebase,
-          project_space=p_s)
-    else:
-      codebase_to_push = source
-
-    editor = base_codebase.MakeEditor(migration_strategy, migration_revisions)
-
-    source_repository_config = self.migration_config.source_repository_config
-    # TODO(dbentley): setting additional_files_re to this is almost
-    # certainly superfluous now. But... I'm not completely sure I'm right
-    # about that, so I'll do it in a separate change.
-    additional_files_re = self.project.public_repository.additional_files_re
-
-    push_codebase_args = dict(
-        source_codebase=codebase_to_push.Path(),
-        destination_editor=editor.Root(),
-        destination_revision=self.applied_against.rev_id,
-        source_revision=up_to_revision.rev_id)
-
-    migration_step = moe_app.RUN.report.AddStep(
-        'migrate_changes',
-        'push_codebase',
-        cmd_args=push_codebase_args)
-    pusher = push_codebase.CodebasePusher(
-        source_codebase=codebase_to_push,
-        destination_editor=editor,
-        report=moe_app.RUN.report,
-        files_to_ignore_re=additional_files_re,
-        commit_message=changelog,
-        migration_id=migration_id
-        )
-    commit_id = pusher.Push()
-
-    if pusher.pushed:
-      db.UpdateMigrationDiff(migration_id, diff=editor.Diff(),
-                             link=editor.Link())
-      if commit_id:
-        migration_step.SetResult('%s completed' %
-                                 self.migration_config.direction)
-        r = self.migration_config.target_repository_config.MakeRepository(
-            None, None)[0].MakeRevisionFromId(commit_id)
-        db.FinishMigration(migration_id, r)
-        # TODO(dbentley): need to make this work for import.
-        # It doesn't because we always pass in the migrated revisions
-        # as an internal revision. We should look in the config, and vary the
-        # order.
-        equivalence_check = EquivalenceCheck(
-            migration_revisions[-1].rev_id, commit_id, self.project,
-            EquivalenceCheck.NoteIfSame)
-        update = StateUpdate(actions=[equivalence_check] +
-                             result_migration_list)
-        return update
+    with task:
+      if remaining_revisions:
+        result_migration = Migration(
+            up_to_revision,
+            self.applied_against,
+            remaining_revisions,
+            self.project,
+            self.migration_config, self.mock_migration, 1)
+        result_migration_list = [result_migration]
+        result = StateUpdate(actions=[result_migration] + actions)
       else:
-        migration_step.SetResult('%s ready for human intervention' %
-                                 self.migration_config.direction)
-        if merge_context and merge_context.failed_merges:
-          moe_app.RUN.report.AddTodo(
-              'Resolve failed merges in %s' % base_codebase.Client().directory)
-          moe_app.RUN.report.SetReturnCode(2)
-        if self.migration_config.IsExport():
-          moe_app.RUN.report.AddTodo(
-              "Alternately, visit your project's MOE dashboard at "
-              '%s , approve each migration, then rerun '
-              'manage_codebases.' % db.GetDashboardUrl())
-        if remaining_revisions:
-          # We committed as requested, but this did not leave a permanent
-          # commit. (probably because it wasn't approved on the db).
-          # We should no longer continue committing this line of migrations,
-          # but we should upload them to the db so they can be approved.
+        result_migration = None
+        result_migration_list = []
+        result = None
 
-          # TODO(dbentley): no, we shouldn't. We should just quit.
-          # But we should quit in a classy way. And explain to the user
-          # why we're quitting.
-          result_migration = Migration(
-              up_to_revision,
-              self.applied_against,
-              remaining_revisions,
-              self.project,
-              self.migration_config,
-              True,
-              1
-              )
-          return StateUpdate(actions=[result_migration] + actions)
+      previous_source = self.migration_config.source_codebase_creator.Create(
+          self.previous_revision.rev_id)
+      try:
+        source = self.migration_config.source_codebase_creator.Create(
+            up_to_revision.rev_id)
+      except base.CodebaseCreationError:
+        if not remaining_revisions:
+          # This is an error at the last revision
+          # It might be better if we just marked it as an error.
+          raise
+        # In this case, we can't migrate the up_to_revision. So instead, we
+        # fold it into the next migration.
+        action = Migration(
+            self.previous_revision,
+            self.applied_against,
+            self.revisions,
+            self.project,
+            self.migration_config, self.mock_migration,
+            self.num_revisions_to_migrate + 1)
+        return StateUpdate(actions=[action] + actions)
+
+      should_migrate = bool(base.AreCodebasesDifferent(
+          previous_source, source, noisy_files_re=self.project.noisy_files_re))
+      if not should_migrate:
+        return result
+
+      migration_strategy = copy.copy(self.migration_config.migration_strategy)
+
+      if migration_strategy.merge_strategy == base.ERROR:
+        raise base.Error('Attempted %s invalid with merge strategy.' %
+                         self.migration_config.direction)
+
+      migration = db.FindMigration(up_to_revision, abbreviated=False)
+      if (not migration or
+          (migration.status == base.Migration.CANCELED)):
+        changelog = base.ConcatenateChangelogs(migration_revisions)
+        creator = self.migration_config.source_codebase_creator
+        migration_id = db.StartMigration(
+            self.migration_config.direction,
+            up_to_revision,
+            changelog=changelog,
+            migrated_revisions=migration_revisions)
+      elif migration.status == base.Migration.SUBMITTED:
+        # TODO(dbentley): this should never happen
+        find_step = moe_app.RUN.report.AddStep(
+            'migrate_changes', 'find_migration')
+        find_step.SetResult('%s of revisions [%s, %s] has '
+                            'already been submitted in migration %s.' %
+                            (self.migration_config.direction,
+                             self.start_migrated_revision,
+                             end_migrated_revision,
+                             migration.migration_id))
+        return result
+      else:
+        changelog = migration.changelog
+        migration_id = migration.migration_id
+        if migration.status == base.Migration.APPROVED:
+          # TODO(dbentley): should we do this only if it's somewhere in the
+          # project config?
+          migration_strategy.commit_strategy = base.COMMIT_REMOTELY
+
+      if self.mock_migration:
+        return result
+
+      base_codebase = self.migration_config.target_codebase_creator.Create(
+          self.applied_against.rev_id)
+      merge_context = None
+      if migration_strategy.merge_strategy == base.MERGE:
+        merge_args = dict(previous_codebase=previous_source)
+        if self.migration_config.IsExport():
+          merge_args['generated_codebase'] = source
+          merge_args['public_codebase'] = base_codebase
+        elif self.migration_config.IsImport():
+          merge_args['generated_codebase'] = base_codebase
+          merge_args['public_codebase'] = source
+        merge_config = merge_codebases.MergeCodebasesConfig(**merge_args)
+        merge_context = merge_codebases.MergeCodebasesContext(
+            merge_config)
+        merge_context.Update()
+        p_s = self.migration_config.target_codebase_creator.ProjectSpace()
+        codebase_to_push = codebase_utils.Codebase(
+            merge_context.config.merged_codebase,
+            expanded_path=merge_context.config.merged_codebase,
+            project_space=p_s)
+      else:
+        codebase_to_push = source
+
+      editor = base_codebase.MakeEditor(migration_strategy, migration_revisions)
+
+      source_repository_config = self.migration_config.source_repository_config
+      # TODO(dbentley): setting additional_files_re to this is almost
+      # certainly superfluous now. But... I'm not completely sure I'm right
+      # about that, so I'll do it in a separate change.
+      additional_files_re = (
+          self.project.public_repository_config.additional_files_re)
+
+      push_codebase_args = dict(
+          source_codebase=codebase_to_push.Path(),
+          destination_editor=editor.Root(),
+          destination_revision=self.applied_against.rev_id,
+          source_revision=up_to_revision.rev_id)
+
+      pusher = push_codebase.CodebasePusher(
+          source_codebase=codebase_to_push,
+          destination_editor=editor,
+          report=moe_app.RUN.report,
+          files_to_ignore_re=additional_files_re,
+          commit_message=changelog,
+          migration_id=migration_id
+          )
+      commit_id = pusher.Push()
+
+      if pusher.pushed:
+        db.UpdateMigrationDiff(migration_id, diff=editor.Diff(),
+                               link=editor.Link())
+        if commit_id:
+          moe_app.RUN.ui.Info('%s completed' %
+                              self.migration_config.direction)
+          r = self.migration_config.target_repository.MakeRevisionFromId(
+              commit_id)
+          db.FinishMigration(migration_id, r)
+          # TODO(dbentley): need to make this work for import.
+          # It doesn't because we always pass in the migrated revisions
+          # as an internal revision. We should look in the config, and vary the
+          # order.
+          equivalence_check = EquivalenceCheck(
+              migration_revisions[-1].rev_id, commit_id, self.project,
+              EquivalenceCheck.NoteIfSame)
+          update = StateUpdate(actions=[equivalence_check] +
+                               result_migration_list)
+          return update
         else:
-          # There are no revisions left to migrate in this direction,
-          # so make sure we don't migrate the other way
-          if actions:
-            for action in actions:
-              if isinstance(action, Migration):
-                action.mock_migration = True
-            return StateUpdate(actions=actions)
+          moe_app.RUN.ui.Info('%s ready for human intervention' %
+                              self.migration_config.direction)
+          if merge_context and merge_context.failed_merges:
+            moe_app.RUN.report.AddTodo(
+                'Resolve failed merges in %s' %
+                base_codebase.Client().directory)
+            moe_app.RUN.report.SetReturnCode(2)
+          if self.migration_config.IsExport():
+            moe_app.RUN.report.AddTodo(
+                "Alternately, visit your project's MOE dashboard at "
+                '%s , approve each migration, then rerun '
+                'manage_codebases.' % db.GetDashboardUrl())
+          if remaining_revisions:
+            # We committed as requested, but this did not leave a permanent
+            # commit. (probably because it wasn't approved on the db).
+            # We should no longer continue committing this line of migrations,
+            # but we should upload them to the db so they can be approved.
+
+            # TODO(dbentley): no, we shouldn't. We should just quit.
+            # But we should quit in a classy way. And explain to the user
+            # why we're quitting.
+            result_migration = Migration(
+                up_to_revision,
+                self.applied_against,
+                remaining_revisions,
+                self.project,
+                self.migration_config,
+                True,
+                1
+                )
+            return StateUpdate(actions=[result_migration] + actions)
           else:
-            return None
-    else:
-      db.CancelMigration(migration_id)
-      migration_step.SetResult('%s resulted in a no-op' %
-                               self.migration_config.direction)
-      return result
+            # There are no revisions left to migrate in this direction,
+            # so make sure we don't migrate the other way
+            if actions:
+              for action in actions:
+                if isinstance(action, Migration):
+                  action.mock_migration = True
+              return StateUpdate(actions=actions)
+            else:
+              return None
+      else:
+        db.CancelMigration(migration_id)
+        # TODO(dbentley): should this Info() (and others in this file) be
+        # in some way connected as the result of the current task?
+        moe_app.RUN.ui.Info('%s resulted in a no-op' %
+                            self.migration_config.direction)
+        return result

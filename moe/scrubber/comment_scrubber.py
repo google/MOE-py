@@ -363,7 +363,7 @@ class HtmlCommentExtractor(CommentExtractor):
   Looks for "<!-- & -->" pairs
   """
   COMMENT_RE = re.compile('(<!--.*?-->)', re.S)
-  SCRIPT_RE = re.compile('<script>(.*?)</script>', re.S)
+  SCRIPT_RE = re.compile('<script[^>]*>(.*?)</script>', re.S)
 
   def ExtractComments(self, file_obj):
     """Extract comments from file."""

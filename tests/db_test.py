@@ -83,14 +83,20 @@ def tearDown():
 
 
 def InternalRevision(rev_id, project, **kwargs):
-  return base.Revision(rev_id, project.internal_repository.Info()['name'],
+  return base.Revision(rev_id,
+                       project.internal_repository_config.Info()['name'],
                        **kwargs)
 
 
 def PublicRevision(rev_id, project, **kwargs):
-  return base.Revision(rev_id, project.public_repository.Info()['name'],
+  return base.Revision(rev_id, project.public_repository_config.Info()['name'],
                        **kwargs)
 
+def Post(url, data):
+  return db_client._Post('http://localhost:8080', url, data)
+
+def Get(url, data):
+  return db_client._Get('http://localhost:8080', url, data)
 
 class MoeDbTest(basetest.TestCase):
 
@@ -99,15 +105,15 @@ class MoeDbTest(basetest.TestCase):
     if not project:
       json = resources.GetResource(TestResourceName(file))
       json = json.replace('createProject', test_name)
-      project = config.MoeProjectFromJson(simplejson.loads(json))
-      db_client._Post(
-          'http://localhost:8080', 'update_project',
+      project = config.MoeProjectConfigFromJson(simplejson.loads(json))
+      Post(
+          'update_project',
           {'project_name': project.name,
            'project_config': str(project.Serialized()),
            'internal_repository_info':
-             simplejson.dumps(project.internal_repository.Info()),
+             simplejson.dumps(project.internal_repository_config.Info()),
            'public_repository_info':
-             simplejson.dumps(project.public_repository.Info())})
+             simplejson.dumps(project.public_repository_config.Info())})
     self._client = db_client.ServerBackedMoeDbClient(
         project=project,
         record_process=record_process,
@@ -125,7 +131,7 @@ class MoeDbTest(basetest.TestCase):
     stored_project = db_client.GetStoredProject(
         'http://localhost:8080',
         'createProject')
-    self.assertTrue(isinstance(stored_project, config.MoeProject),
+    self.assertTrue(isinstance(stored_project, config.MoeProjectConfig),
                     str(stored_project))
     self.assertMultiLineEqual(str(stored_project.Serialized()),
                               str(project.Serialized()))
@@ -158,6 +164,88 @@ class MoeDbTest(basetest.TestCase):
         base.PUBLIC
         )
     self.assertEqual([], stored_equivalences)
+
+  def testInvalidEquivalence(self):
+    project = self._CreateProject('InvalidEquivalence')
+    equivalence = db_client.Equivalence('1001', '1')
+    self._client.NoteEquivalence(equivalence)
+
+    invalid_equivalence = db_client.Equivalence('1002', '1')
+    self._client.NoteEquivalence(invalid_equivalence,
+                                 verification_status=base.VERIFICATION_INVALID)
+    stored_equivalences = self._client.FindEquivalences(
+        PublicRevision('1', project),
+        base.PUBLIC
+        )
+    self.assertEqual([equivalence], stored_equivalences)
+
+  def testEquivalencesFromDifferentProjects(self):
+    project_a = self._CreateProject('ProjEquivalenceA')
+    client_a = self._client
+
+    project_b = self._CreateProject('ProjEquivalenceB')
+    client_b = self._client
+
+    equivalence_a = db_client.Equivalence('1001', '1')
+    client_a.NoteEquivalence(equivalence_a)
+
+    equivalence_b = db_client.Equivalence('1001', '2')
+    client_b.NoteEquivalence(equivalence_b)
+
+    equivalence_a2 = db_client.Equivalence('1002', '3')
+    client_a.NoteEquivalence(equivalence_a2)
+
+    equivalence_b2 = db_client.Equivalence('1003', '3')
+    client_b.NoteEquivalence(equivalence_b2)
+
+    self.assertEqual([equivalence_a], client_a.FindEquivalences(
+        InternalRevision('1001', project_a),
+        base.INTERNAL))
+    self.assertEqual([], client_a.FindEquivalences(
+        InternalRevision('1001', project_b),
+        base.INTERNAL))
+
+    self.assertEqual([equivalence_a], client_a.FindEquivalences(
+        PublicRevision('1', project_a),
+        base.PUBLIC))
+    self.assertEqual([], client_a.FindEquivalences(
+        PublicRevision('2', project_a),
+        base.PUBLIC))
+    self.assertEqual([equivalence_a2], client_a.FindEquivalences(
+        PublicRevision('3', project_a),
+        base.PUBLIC))
+
+    self.assertEqual([], client_b.FindEquivalences(
+        InternalRevision('1001', project_a),
+        base.INTERNAL))
+    self.assertEqual([equivalence_b], client_b.FindEquivalences(
+        InternalRevision('1001', project_b),
+        base.INTERNAL))
+
+    self.assertEqual([], client_b.FindEquivalences(
+        PublicRevision('1', project_b),
+        base.PUBLIC))
+    self.assertEqual([equivalence_b], client_b.FindEquivalences(
+        PublicRevision('2', project_b),
+        base.PUBLIC))
+    self.assertEqual([equivalence_b2], client_b.FindEquivalences(
+        PublicRevision('3', project_b),
+        base.PUBLIC))
+
+  def testEquivalenceVerification(self):
+    self._CreateProject('EquivalenceVerification')
+    equivalence1 = db_client.Equivalence('1001', '1')
+    self._client.NoteEquivalence(equivalence1)
+    equivalence2 = db_client.Equivalence('1003', '3')
+    self._client.NoteEquivalence(
+        equivalence2,
+        verification_status=base.VERIFICATION_UNVERIFIED)
+
+    stored_equivalences = self._client.FindUnverifiedEquivalences()
+    self.assertEqual([equivalence2], stored_equivalences)
+
+    self._client.NoteEquivalence(equivalence2)
+    self.assertEqual([], self._client.FindUnverifiedEquivalences())
 
   def testMigration(self):
     project = self._CreateProject('Migration', with_equivalence=True)
@@ -366,15 +454,15 @@ class MoeDbTest(basetest.TestCase):
     self.assertEqual(process_data['running'], True)
 
   def testProjectLockError(self):
-    project = config.MoeProject('ProjectLock')
-    db_client._Post(
-        'http://localhost:8080', 'update_project',
+    project = config.MoeProjectConfig('ProjectLock')
+    Post(
+        'update_project',
         {'project_name': project.name,
          'project_config': str(project.Serialized()),
          'internal_repository_info':
-           simplejson.dumps(project.internal_repository.Info()),
+           simplejson.dumps(project.internal_repository_config.Info()),
          'public_repository_info':
-           simplejson.dumps(project.public_repository.Info())})
+           simplejson.dumps(project.public_repository_config.Info())})
     unused_db = db_client.ServerBackedMoeDbClient(
         project,
         url='http://localhost:8080')
@@ -395,8 +483,8 @@ class MoeDbTest(basetest.TestCase):
     migration_id = self._client.StartMigration(
         base.Migration.EXPORT, InternalRevision('1003', project),
         changelog='sample changelog')
-    comments = db_client._Get(
-        'http://localhost:8080', 'comments',
+    comments = Get(
+        'comments',
         {'migration_id': migration_id})['comments']
     self.assertEqual(0, len(comments))
 
@@ -408,26 +496,72 @@ class MoeDbTest(basetest.TestCase):
         'author': 'nicksantos',
         'text': 'This code is terrible',
     }
-    last_comment_id = db_client._Post(
-        'http://localhost:8080', 'add_comment', comment_data)['comment_id']
+    last_comment_id = Post(
+        'add_comment', comment_data)['comment_id']
 
-    comments = db_client._Get(
-        'http://localhost:8080', 'comments',
+    comments = Get(
+        'comments',
         {'migration_id': migration_id})['comments']
     self.assertEqual(1, len(comments))
     for key in comment_data.keys():
       self.assertEqual(comment_data[key], comments[0][key],
                        'Comment data: %s' % key)
 
-    db_client._Post(
-        'http://localhost:8080', 'edit_comment',
+    Post(
+        'edit_comment',
         {'comment_id': last_comment_id,
-         'text': 'This code looks good to me'})
-    comments = db_client._Get(
-        'http://localhost:8080', 'comments',
+         'comment_text': 'This code looks good to me'})
+    comments = Get('comments',
         {'migration_id': migration_id})['comments']
     self.assertEqual('This code looks good to me', comments[0]['text'])
 
+  def testApproveMigration(self):
+    project = self._CreateProject('ApproveMigration')
+    migration_id = self._client.StartMigration(
+        base.Migration.EXPORT, InternalRevision('1003', project),
+        changelog='sample changelog')
+    comments = Get(
+        'comments',
+        {'migration_id': migration_id})['comments']
+    comment_data_1 = {
+        'migration_id': migration_id,
+        'text': 'indent +2',
+    }
+    comment_data_2 = {
+        'migration_id': migration_id,
+        'text': 'Needs a semicolon',
+    }
+    comment_id_1 = Post('add_comment', comment_data_1)['comment_id']
+    comment_id_2 = Post('add_comment', comment_data_2)['comment_id']
+
+    Post('approve_migration',
+         {'migration_id': migration_id})
+
+    server_migration = self._client.MigrationInfo(migration_id, False)
+    self.assertEqual('Approved', server_migration['status'])
+    self.assertEqual('sample changelog', server_migration['changelog'])
+
+    # Unapprove and re-approve.
+    Post('unapprove_migration',
+         {'migration_id': migration_id})
+    Post('approve_migration',
+         {'migration_id': migration_id,
+          'changelog': 'real changelog',
+          'comment_id_0': comment_id_1,
+          'comment_text_0': 'indent +4',
+          'comment_id_1': comment_id_2,
+          'comment_text_1': 'oh, i see the semicolon'})
+
+    server_migration = self._client.MigrationInfo(migration_id, False)
+    self.assertEqual('real changelog', server_migration['changelog'])
+
+    comments = Get('comments',
+        {'migration_id': migration_id})['comments']
+    comments_dict = {}
+    for c in comments:
+      comments_dict[c['comment_id']] = c['text']
+    self.assertEqual('indent +4', comments_dict[comment_id_1])
+    self.assertEqual('oh, i see the semicolon', comments_dict[comment_id_2])
 
   def testRecentHistory(self):
     project = self._CreateProject('RecentHistory')

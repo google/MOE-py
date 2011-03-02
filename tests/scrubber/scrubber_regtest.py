@@ -13,6 +13,8 @@ import gflags as flags
 from google.apputils import basetest
 
 from moe import base
+from moe import codebase_utils
+from moe import moe_app
 from moe.scrubber import scrubber
 import test_util
 
@@ -26,6 +28,7 @@ def setUp():
   # pylint: disable-msg=W0603
   global UNRUN_SCENARIOS
   UNRUN_SCENARIOS = set(os.listdir(SCENARIOS_DIR))
+  moe_app.InitForTest()
 
 
 def tearDown():
@@ -76,6 +79,9 @@ class ScrubberRegressionTest(basetest.TestCase):
   def testSensitiveWords(self):
     self.RunScenario('sensitive_words')
 
+  def testStringReplacement(self):
+    self.RunScenario('string_replacement')
+
   def testExtensionMap(self):
     self.RunScenario('extension_map')
 
@@ -96,6 +102,9 @@ class ScrubberRegressionTest(basetest.TestCase):
 
   def testRenaming(self):
     self.RunScenario('rename')
+
+  def testErrorInDeletedFile(self):
+    self.RunScenario('error_in_deleted_file')
 
   # TODO(dborowitz): More tests with inputs that are known to fail scrubbing.
 
@@ -121,7 +130,9 @@ class ScrubberRegressionTest(basetest.TestCase):
 
     codebase2 = os.path.join(context._temp_dir, 'output')
 
-    different = base.AreCodebasesDifferent(codebase1, codebase2)
+    different = base.AreCodebasesDifferent(
+        codebase_utils.Codebase(codebase1),
+        codebase_utils.Codebase(codebase2))
 
     if different:
       # TODO(dbentley): this should describe how they differ.

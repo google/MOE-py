@@ -54,6 +54,8 @@ MERGE = 'merge'
 
 MERGE_STRATEGIES = [ERROR, OVERWRITE, MERGE]
 
+# Note: this section must be kept in sync with MOE db's models.py
+
 # Different ways to refer to elements and the set of repositories
 INTERNAL = 0
 PUBLIC = 1
@@ -61,6 +63,16 @@ INTERNAL_STR = 'internal'
 PUBLIC_STR = 'public'
 REPOSITORIES = [INTERNAL_STR, PUBLIC_STR]
 PROJECT_SPACES = [INTERNAL_STR, PUBLIC_STR]
+
+
+# enum for Equivalence Verification
+# Equivalences start as unverified. Then we can either verify them, or find
+# that they are invalid.
+VERIFICATION_UNVERIFIED = 0
+VERIFICATION_VERIFIED = 1
+VERIFICATION_INVALID = 2
+
+VERIFICATION_NAMES = ['Unverified', 'Verified', 'Invalid']
 
 
 class Error(Exception):
@@ -509,7 +521,8 @@ class SourceControlRepository(object):
       highest_rev_id: the rev_id of the maximum revision to allow.
 
     Returns:
-      str, the id of the highest revision <= highest_rev_id
+      str, the id of the highest revision <= highest_rev_id, or None if
+      highest_rev_id is invalid
     """
     raise NotImplementedError
 
@@ -577,7 +590,7 @@ class Revision(object):
     self.repository_name = repository_name
     self.changelog = changelog
     self.author = author
-    if isinstance(time, basestring):
+    if time and isinstance(time, basestring):
       time = datelib.Timestamp.FromString(time)
     self.time = time
     self.migration = None
@@ -657,7 +670,8 @@ class FileDifference(object):
     set. Its existence is enough to prove they differ.
   """
 
-  def __init__(self):
+  def __init__(self, relative_filename):
+    self.relative_filename = relative_filename
     self.file1_missing = False
     self.file2_missing = False
     self.reason = None
@@ -668,12 +682,13 @@ class FileDifference(object):
     return '[Unknown]'
 
 
-def AreFilesDifferent(file1, file2):
+def AreFilesDifferent(file1, file2, relative_filename=''):
   """Diff file1 and file2.
 
   Args:
     file1: str, path to file1
     file2: str, path to file2
+    relative_filename: str, the relative filename
 
   Returns:
     FileDifference (or None, if not different)
@@ -681,7 +696,7 @@ def AreFilesDifferent(file1, file2):
   args = {}
   args['stderr'] = open('/dev/null', 'w')
   args['stdout'] = open('/dev/null', 'w')
-  difference = FileDifference()
+  difference = FileDifference(relative_filename)
   # We want to generate diffs even if one file doesn't exist.
   if not os.path.exists(file1):
     difference.file1_missing = True
@@ -713,10 +728,13 @@ class CodebaseDifference(object):
   """
 
   def __init__(self):
+    # TODO(dbentley): storing only the first difference is a hack
+    # to enable short-circuiting. This was premature optimization.
     self.first_difference = None
     self.first_difference_reason = None
     self.codebase1_only = []
     self.codebase2_only = []
+    self.differences = []
 
   def __str__(self):
     message = ''
@@ -731,60 +749,50 @@ class CodebaseDifference(object):
       return message
     return '[Unknown]'
 
+  def HasDifference(self):
+    return self.first_difference is not None
 
-def AreCodebasesDifferent(codebase1, codebase2, noisy_files_re=None,
-                          additional_codebase1_files_re=None,
-                          additional_codebase2_files_re=None,
-                          check_all=False, temp_dir=''):
-  """Determines whether two codebases are different.
+  def AddDifference(self, file_difference):
+    if not self.first_difference:
+      self.first_difference = file_difference.relative_filename
+      self.first_difference_reason = '%s: %s' % (
+          file_difference.relative_filename, str(file_difference))
+    self.differences.append(file_difference)
+
+
+def AreCodebasesDifferent(codebase1, codebase2, noisy_files_re=None):
+  """Determines whether two Codebases are different, and how.
+
+  NB(dbentley): this takes Codebase objects, and replaces an older method
+  that had a better name and worse interface.
 
   Args:
-    codebase1: str, path to a codebase
-    codebase2: str, path to a codebase
+    codebase1: codebase_utils.Codebase
+    codebase2: codebase_utils.Codebase
     noisy_files_re: str, regular expression of files that are "noisy", that is,
                     they change so often that we should not consider their
                     differences.
-    check_all: bool, check all files
-    temp_dir: str, temporary directory
 
   Returns:
-    CodebaseDifference
+    CodebaseDifference, or None if no difference
   """
-  if additional_codebase1_files_re:
-    additional_codebase1_files_re = re.compile(additional_codebase1_files_re)
-  if additional_codebase2_files_re:
-    additional_codebase2_files_re = re.compile(additional_codebase2_files_re)
   if noisy_files_re:
     noisy_files_re = re.compile(noisy_files_re)
 
-  codebase1 = PossiblyExpandCodebase(codebase1, temp_dir)
-  codebase2 = PossiblyExpandCodebase(codebase2, temp_dir)
-
-  codebase1_files = ListFiles(codebase1, additional_codebase1_files_re)
-  codebase2_files = ListFiles(codebase2, additional_codebase2_files_re)
-
-  relative_files = set(codebase1_files).union(codebase2_files)
+  relative_files = set(codebase1.Walk()).union(codebase2.Walk())
   result = CodebaseDifference()
 
   for relative_filename in relative_files:
     if noisy_files_re and noisy_files_re.search(relative_filename):
       continue
     file_difference = AreFilesDifferent(
-        os.path.join(codebase1, relative_filename),
-        os.path.join(codebase2, relative_filename))
+        codebase1.FilePath(relative_filename),
+        codebase2.FilePath(relative_filename),
+        relative_filename)
     if file_difference:
-      if not result.first_difference:
-        result.first_difference = relative_filename
-        result.first_difference_reason = '%s: %s' % (
-            relative_filename, str(file_difference))
-      if not check_all:
-        return result
-      if file_difference.file1_missing:
-        result.codebase2_only.append(relative_filename)
-      if file_difference.file2_missing:
-        result.codebase1_only.append(relative_filename)
+      result.AddDifference(file_difference)
 
-  if result.first_difference:
+  if result.HasDifference():
     return result
   return None
 
@@ -882,7 +890,8 @@ def RunCmd(cmd, args, cwd=None, need_stdout=False, print_stdout_and_err=False,
   logging.debug('>>%s FINISHED', cmd)
 
   if process.returncode:
-    sys.stderr.write(stderr_data)
+    if stderr_data:
+      sys.stderr.write(stderr_data)
     message = ('%(cmd)s command %(args)s in %(dir)s returned %(return_code)d' %
                {'cmd': cmd, 'args': args,
                 'return_code': process.returncode, 'dir': cwd})
@@ -902,8 +911,14 @@ def RunCmd(cmd, args, cwd=None, need_stdout=False, print_stdout_and_err=False,
 class RepositoryConfig(object):
   """Configuration for a MOE repository."""
 
-  def MakeRepository(self):
+  def MakeRepository(self, translators=None):
     """Make the repository.
+
+    NB: implementations of this function should be safe to run in a test
+        (e.g., they should not have to talk to a server just to be constructed.)
+
+    Args:
+      translators: seq of translators.Translator
 
     Returns:
       (SourceControlRepository, CodebaseCreator)

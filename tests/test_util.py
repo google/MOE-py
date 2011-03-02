@@ -15,6 +15,7 @@ from moe import base
 from moe import codebase_utils
 from moe import config
 from moe import db_client
+from moe import moe_project
 
 FLAGS = flags.FLAGS
 
@@ -41,8 +42,8 @@ def TestResourceFilename(name):
   return resources.GetResourceFilename(name.rstrip('/'))
 
 
-def EmptyMoeProject():
-  return config.MoeProject('test')
+def EmptyMoeProjectConfig():
+  return config.MoeProjectConfig('test')
 
 
 class MockDbClient(db_client.MoeDbClient):
@@ -77,6 +78,9 @@ class MockDbClient(db_client.MoeDbClient):
       return [e for e in self.equivalences if e.internal_revision == r.rev_id]
     else:
       return [e for e in self.equivalences if e.public_revision == r.rev_id]
+
+  def FindUnverifiedEquivalences(self):
+    return []
 
   def GetMigration(self, migration_id, abbreviated=True):
     """Get one migration from the database."""
@@ -165,11 +169,11 @@ def MockOutDatabase(db=None):
       return MockDbClient()
   db_client.ServerBackedMoeDbClient = None
 
-  def MockMakeProjectAndDbClient(*unused_args, **unused_kwargs):
+  def MockMakeProjectContext(*unused_args, **unused_kwargs):
     project_obj = config.ParseConfigFile(FLAGS.project_config_file)
-    return (project_obj, MakeClient())
+    return moe_project.MoeProjectContext(project_obj, MakeClient())
 
-  db_client.MakeProjectAndDbClient = MockMakeProjectAndDbClient
+  db_client.MakeProjectContext = MockMakeProjectContext
 
 
 class MockCodebase(codebase_utils.Codebase):
@@ -251,7 +255,7 @@ class MockRepositoryConfig(base.RepositoryConfig):
     self.repository = repository or MockRepository(self.name)
     self.cc = cc or MockCodebaseCreator(self.name)
 
-  def MakeRepository(self, temp_dir='', expander=''):
+  def MakeRepository(self, translators=None):
     return (self.repository, self.cc)
 
   def Serialized(self):
@@ -398,9 +402,6 @@ def MockOutPusher(test, codebase_expectations, editor_expectations):
       expected_name, expected_revision = editor_expectations
       test.assertEqual(expected_name, destination_editor.repository_name)
       test.assertEqual(expected_revision, destination_editor.base_revision)
-
-      if not isinstance(report, base.MoeReport):
-        test.fail('report is not a report: %s' % report)
 
     def Push(self):
       self.pushed = True

@@ -16,6 +16,7 @@ import gflags as flags
 
 from google.apputils import basetest
 
+from moe import moe_app
 from moe import push_codebase
 import test_util
 
@@ -25,6 +26,7 @@ FLAGS = flags.FLAGS
 
 def setUp():
   FLAGS.Reset()
+  moe_app.InitForTest()
   push_codebase.DefineFlags(FLAGS)
 
 

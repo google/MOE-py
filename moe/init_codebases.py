@@ -46,26 +46,23 @@ def DefineFlags(flag_values):
 class InitCodebasesContext(object):
   """Context for initializing a MOE project."""
 
-  def __init__(self, project, report, db, internal_revision,
+  def __init__(self, project, internal_revision,
                public_revision=''):
+    """Initialize.
+
+    Args:
+      project: moe_project.MoeProjectContext
+      internal_revision: str
+      public_revision: str
+    """
     self.project = project
-    self._db = db
     self._internal_revision = internal_revision
     self._public_revision = public_revision
-    self.report = report
-    self._temp_dir = moe_app.RUN.temp_dir
 
-    self._expander = moe_app.RUN.expander
-
-    (self._internal_repository, self._internal_codebase_creator) = (
-        project.internal_repository.MakeRepository(self._temp_dir,
-                                                   self._expander))
-    self._internal_revision_obj = self._internal_repository.MakeRevisionFromId(
-        self._internal_repository.GetHeadRevision(self._internal_revision))
-
-    (self._public_repository, self._public_codebase_creator) = (
-        project.public_repository.MakeRepository(self._temp_dir,
-                                                 self._expander))
+    self._internal_revision_obj = (
+        self.project.internal_repository.MakeRevisionFromId(
+            self.project.internal_repository.GetHeadRevision(
+                self._internal_revision)))
 
   def InitializeProject(self):
     """Initialize a MOE project.
@@ -74,11 +71,11 @@ class InitCodebasesContext(object):
     not yet an equivalent version there, then note an equivalence.
     """
     if not self._public_revision:
-      source = self._internal_codebase_creator.Create(
+      source = self.project.internal_codebase_creator.Create(
           self._internal_revision_obj.rev_id)
 
-      export_strategy = self.project.export_strategy
-      public_config = self.project.public_repository
+      export_strategy = self.project.config.export_strategy
+      public_config = self.project.config.public_repository_config
 
       done = False
       while not done:
@@ -101,21 +98,21 @@ class InitCodebasesContext(object):
           password = public_config.password
           done = True
 
-      public_client = self._public_repository.MakeClient(
-          self._temp_dir, username=username, password=password)
+      public_client = self.project.public_repository.MakeClient(
+          moe_app.RUN.temp_dir, username=username, password=password)
       public_editor = public_client.MakeEditor(
           export_strategy, revisions=[self._internal_revision_obj])
 
       pusher_args = {
           'source_codebase': source,
           }
-      export_step = self.report.AddStep('export_changes',
-                                        'push_codebase',
-                                        cmd_args=pusher_args)
+      export_step = moe_app.RUN.report.AddStep('export_changes',
+                                               'push_codebase',
+                                               cmd_args=pusher_args)
       pusher = push_codebase.CodebasePusher(
           source_codebase=source,
           destination_editor=public_editor,
-          report=self.report,
+          report=moe_app.RUN.report,
           commit_message=self._internal_revision_obj.changelog)
       self._public_revision = pusher.Push()
 
@@ -124,9 +121,10 @@ class InitCodebasesContext(object):
           export_step.SetResult('Export completed')
         else:
           export_step.SetResult('Export ready for human intervention')
-          self.report.AddTodo('After committing this change, go to '
-                              '%s to note the equivalence for project %s.'
-                              % (self._db.GetDashboardUrl(), self.project.name))
+          moe_app.RUN.report.AddTodo(
+              'After committing this change, go to '
+              '%s to note the equivalence for project %s.'
+              % (self.project.db.GetDashboardUrl(), self.project.config.name))
       else:
         export_step.SetResult('Nothing to export')
 
@@ -134,14 +132,15 @@ class InitCodebasesContext(object):
       try:
         check = actions.EquivalenceCheck(
             self._internal_revision_obj.rev_id,
-            self._public_revision, self.project,
+            self._public_revision, self.project.config,
             actions.EquivalenceCheck.NoteIfSameErrorIfDifferent)
         check.Perform(
-            self._internal_codebase_creator, self._public_codebase_creator,
-            self.report, self._db, self._temp_dir, [])
-        self.report.AddTodo('Project in equivalence. Begin managing by '
-                            'running [ manage_codebases --project %s ]'
-                            % self.project.name)
+            self.project.internal_codebase_creator,
+            self.project.public_codebase_creator,
+            moe_app.RUN.report, self.project.db, moe_app.RUN.temp_dir, [])
+        moe_app.RUN.report.AddTodo('Project in equivalence. Begin managing by '
+                                   'running [ manage_codebases --project %s ]'
+                                   % self.project.config.name)
       except base.Error, e:
         print e
         print ('The given two revisions (internal %(irev)s, public %(prev)s) '
@@ -155,23 +154,22 @@ class InitCodebasesContext(object):
 
 
 def main(unused_argv):
-  project, db = db_client.MakeProjectAndDbClient(
+  project = db_client.MakeProjectContext(
       create_project=True, acquire_lock=False)
 
   try:
-    moe_app.Init(project.name)
     internal_revision = FLAGS.internal_revision
     if internal_revision <= 0:
       raise app.UsageError('Must supply a revision using --internal_revision '
                            'flag.')
     public_revision = FLAGS.public_revision
     context = InitCodebasesContext(
-        project, moe_app.RUN.report, db,
+        project,
         str(internal_revision), public_revision)
     context.InitializeProject()
-    context.report.PrintSummary()
+    moe_app.RUN.report.PrintSummary()
   finally:
-    db.Disconnect()
+    project.db.Disconnect()
 
 
 class InitCmd(appcommands.Cmd):

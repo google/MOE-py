@@ -28,6 +28,8 @@ import gflags as flags
 from moe import base
 from moe import config
 from moe import config_utils
+from moe import moe_app
+from moe import moe_project
 
 FLAGS = flags.FLAGS
 
@@ -70,8 +72,14 @@ DIFF_MAX_LENGTH = 100000
 class MoeDbClient(object):
   """Abstract interface for the MOE Database to a client project."""
 
-  def NoteEquivalence(self, equivalence):
-    """Add this Equivalence for this project, noting it as current."""
+  def NoteEquivalence(self, equivalence,
+                      verification_status=base.VERIFICATION_VERIFIED):
+    """Add this Equivalence for this project, noting it as current.
+
+    Args:
+      equivalence: base.Correspondence
+      verification_status: int, one of base.VERIFICATION_*
+    """
     raise NotImplementedError
 
   def StartMigration(self, direction, up_to_revision,
@@ -216,8 +224,8 @@ def _Post(url, method, data=None):
   return result['data']
 
 
-def MakeProjectAndDbClient(create_project=False, acquire_lock=None):
-  """Figure out the MOE project and the DB.
+def MakeProjectContext(create_project=False, acquire_lock=None):
+  """Figure out the MOE project and its context.
 
   This looks at flags, the running database, and the config file.
 
@@ -227,7 +235,7 @@ def MakeProjectAndDbClient(create_project=False, acquire_lock=None):
                   use the value implied by --allow_concurrent_instances)
 
   Returns:
-    (config.MoeProject, MoeDbClient)
+    moe_project.MoeProjectContext
 
   Raises:
     base.Error if a project and client cannot be created. This may also happen
@@ -250,7 +258,7 @@ def MakeProjectAndDbClient(create_project=False, acquire_lock=None):
   """
   name = FLAGS.project
   config_file_path = FLAGS.project_config_file
-  project_obj = None
+  config_obj = None
   if acquire_lock is None:
     acquire_lock = not FLAGS.allow_concurrent_instances
 
@@ -262,22 +270,24 @@ def MakeProjectAndDbClient(create_project=False, acquire_lock=None):
     # At this point in MOE setup, there is no moe_app.RUN, so we need to
     # handle output on our own.
     print 'Reading config file from', config_file_path
-    project_obj = config.ParseConfigFile(config_file_path)
-    if name and name != project_obj.name:
+    config_obj = config.ParseConfigFile(config_file_path)
+    if name and name != config_obj.name:
       raise base.Error('Name "%s" from --project and name "%s" from config '
-                       'differ.' % (name, project_obj.name))
+                       'differ.' % (name, config_obj.name))
+
+  moe_app._Init(name or config_obj.name)
 
   url = ( (FLAGS['moe_db_url'].present and FLAGS.moe_db_url) or
-          (project_obj and project_obj.moe_db_url) or
+          (config_obj and config_obj.moe_db_url) or
           FLAGS.moe_db_url)
-  stored_project = GetStoredProject(url, name or project_obj.name)
+  stored_project = GetStoredProject(url, name or config_obj.name)
   if not stored_project:
     if not create_project:
       raise base.Error(
           'Project %s does not exist. Create it on the MOE db.' %
-          (name or project_obj.name))
+          (name or config_obj.name))
 
-  if not project_obj:
+  if not config_obj:
     # The command-line contained --project but not --project_config_file.
     # We'll read the current config file in from the filesystem, based on
     # the stored project's filename.
@@ -295,20 +305,21 @@ def MakeProjectAndDbClient(create_project=False, acquire_lock=None):
       raise base.Error(
           'Could not find config file "%s" (expected it at "%s")' %
           (stored_project.filename, absolute_config_path))
-    project_obj = config.ParseConfigText(current_config_text,
-                                         filename=stored_project.filename)
+    config_obj = config.ParseConfigText(current_config_text,
+                                        filename=stored_project.filename)
 
   _Post(url, 'update_project',
-        {'project_name': project_obj.name,
-         'project_config': str(project_obj.Serialized()),
+        {'project_name': config_obj.name,
+         'project_config': str(config_obj.Serialized()),
          'internal_repository_info': simplejson.dumps(
-             project_obj.internal_repository.Info()),
+             config_obj.internal_repository_config.Info()),
          'public_repository_info': simplejson.dumps(
-             project_obj.public_repository.Info()),
+             config_obj.public_repository_config.Info()),
          })
-  db = ServerBackedMoeDbClient(project_obj, record_process=acquire_lock,
+  db = ServerBackedMoeDbClient(config_obj, record_process=acquire_lock,
                                url=url)
-  return (project_obj, db)
+  project_context = moe_project.MoeProjectContext(config_obj, db)
+  return project_context
 
 
 class ServerBackedMoeDbClient(MoeDbClient):
@@ -386,7 +397,8 @@ class ServerBackedMoeDbClient(MoeDbClient):
   def GetDashboardUrl(self):
     return '%s/project/%s' % (self._url, self.project.name)
 
-  def NoteEquivalence(self, equivalence):
+  def NoteEquivalence(self, equivalence,
+                      verification_status=base.VERIFICATION_VERIFIED):
     """Add this Equivalence for this project, noting it as current."""
     data = {'project_name': self.project.name,
             'internal_revision': simplejson.dumps(
@@ -394,6 +406,10 @@ class ServerBackedMoeDbClient(MoeDbClient):
             'public_revision': simplejson.dumps(
                 {'rev_id': equivalence.public_revision}),
            }
+
+    if verification_status is not None:
+      data['verification_status'] = verification_status
+
     self._Post('note_equivalence', data)
 
   def StartMigration(self, direction, up_to_revision,
@@ -565,7 +581,7 @@ class ServerBackedMoeDbClient(MoeDbClient):
 
   # Noting a revision takes non-zero time. If there are many revisions to note,
   # this can exceed deadlines, leaving MOE dead in the water.
-  MAX_REVISIONS_PER_BATCH = 50
+  MAX_REVISIONS_PER_BATCH = 10
 
   def NoteRevisions(self, revisions):
     """Note revisions as occurring in a repository.
@@ -616,6 +632,22 @@ class ServerBackedMoeDbClient(MoeDbClient):
       request_dict['public_revision'] = simplejson.dumps(revision.Dump())
     else:
       raise base.Error('Invalid which_repository: %s' % repr(which_repository))
+    result_dict = self._Get('find_equivalences', request_dict)
+    equivalences = result_dict['equivalences']
+    return [e for e in EquivalencesFromDicts(equivalences)]
+
+  def FindUnverifiedEquivalences(self):
+    """Find all equivalences for this project that are unverified.
+
+    Args:
+      None
+
+    Returns:
+      seq of base.Correspondence
+    """
+    request_dict = {'project_name': self.project.name,
+                    'verification_status': base.VERIFICATION_UNVERIFIED}
+
     result_dict = self._Get('find_equivalences', request_dict)
     return EquivalencesFromDicts(result_dict['equivalences'])
 

@@ -54,9 +54,9 @@ class MercurialClient(base.CodebaseClient):
       # See comment in __init__. This is where we check into clone
       # in the directory.
       print 'Checking out; you may have to enter username and password'
+      self.checked_out = True
       RunHg(['clone', self.repository_url, 'clone'],
             cwd=os.path.dirname(self.checkout), unhook_stdout_and_err=True)
-      self.checked_out = True
       print 'Checked out.'
     else:
       # TODO(user): update hg client here
@@ -65,6 +65,7 @@ class MercurialClient(base.CodebaseClient):
       pass
 
   def RunHg(self, args, **kwargs):
+    self.Checkout()
     kwargs['cwd'] = self.checkout
     # TODO(user): try to use username/password
     return RunHg(args, **kwargs)
@@ -132,7 +133,7 @@ class MercurialEditor(base.CodebaseEditor):
       # already be sufficient.
       return
 
-    # mv the file
+    # Update/create the file
     base.MakeDir(os.path.dirname(abs_dest))
 
     # NB(dbentley): copy instead of copyfile to copy permission bits
@@ -240,7 +241,6 @@ class MercurialRepository(base.SourceControlRepository):
     self._url = repository_url
     self._name = name
     self._client = MercurialClient(moe_app.RUN.temp_dir, repository_url)
-    self._client.Checkout()
 
   def Export(self, directory, revision=''):
     """Export repository at revision into directory."""
@@ -261,7 +261,10 @@ class MercurialRepository(base.SourceControlRepository):
     args = ['log', '-l', '1']
     if highest_rev_id:
       args += [ '-r', highest_rev_id ]
-    log = self._client.RunHg(args, need_stdout=True)
+    try:
+      log = self._client.RunHg(args, need_stdout=True)
+    except base.CmdError:
+      return None
     for line in log.split('\n'):
       if line.startswith('changeset:'):
         line = line[len('changeset:'):]
@@ -381,7 +384,7 @@ def ParseRevisions(log, repository_name):
 class MercurialRepositoryConfig(base.RepositoryConfig):
   """Config for mercurial repository."""
 
-  def __init__(self, config_json, repository_name='', translators=None):
+  def __init__(self, config_json, repository_name=''):
     if config_json['type'] != 'mercurial':
       raise base.Error('type %s is not mercurial' % config_json['type'])
     self.url = config_json['url']
@@ -393,9 +396,8 @@ class MercurialRepositoryConfig(base.RepositoryConfig):
       self._repository_name = repository_name + '_hg'
     else:
       self._repository_name = ''
-    self._translators = translators or []
 
-  def MakeRepository(self):
+  def MakeRepository(self, translators=None):
     repository = MercurialRepository(self.url,
                                      self._repository_name)
     return (repository,
@@ -403,7 +405,7 @@ class MercurialRepositoryConfig(base.RepositoryConfig):
                 repository, self.username, self.password,
                 repository_name=self._repository_name,
                 additional_files_re=self.additional_files_re,
-                translators=self._translators))
+                translators=translators))
 
   def Serialized(self):
     return self._config_json

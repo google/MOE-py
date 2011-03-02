@@ -1,0 +1,28 @@
+{# Copyright 2011 Google Inc. All Rights Reserved. #}
+
+{% comment %}
+  Form for noting an equivalence.
+
+  Args:
+    project_name: The name of the project. If not specified, we will ask
+       the user to input a project name.
+
+  Author: nicksantos@google.com (Nick Santos)
+{% endcomment %}
+
+<h2>Note an equivalence:</h2>
+
+<p>Has MOE gone totally off the rails? Then get the codebases back
+in equivalence. (E.g., build the public tar, push it to svn, and
+commit the change) Then fill out this
+form:
+<form action="/api/note_equivalence?out=html" method="post">
+  {% if project_name  %}
+    <input type="hidden" value="{{ project_name }}" name="project_name">
+  {% else %}
+    <div>Project Name: <input type="text" name="project_name"></div>
+  {% endif %}
+  <div>Internal Revision:<input type="text" name="internal_revision_id"></div>
+  <div>Public Revision:<input type="text" name="public_revision_id"></div>
+  <div><input type="submit" value="Note Equivalence"></div>
+</form>

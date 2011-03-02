@@ -41,30 +41,30 @@ class MoeRun(object):
   a codebase_creator, or might have more than one.
   """
 
-  def __init__(self, temp_dir, expander, report, ui):
+  def __init__(self, temp_dir, expander, report, ui, for_test=True):
     self.temp_dir = temp_dir
     self.expander = expander
     self.report = report
     self.ui = ui
+    self.for_test = for_test
 
 
-def Init(project_name):
+def _Init(project_name):
   """Initialize a MOE run.
 
   Args:
     project_name: str, the name of the project. The temporary directory
                   is based on this (so each project has its own directory).
 
-  NB: this must be run before any other MOE code, except (optionally)
-    db_client.MakeProjectAndDbClient.
-
-  TODO(dbentley):
-    it would be nicer if this could run before MakeProjectAndDbClient. But the
-    temp_dir is based on the project name. We have this dependency because
-    it is useful to segregate temporary directories.
+  NB: this should be called only by db_client.MakeProjectContext.
   """
   # pylint: disable-msg=W0603
   global RUN
+  if RUN:
+    if RUN.for_test:
+      return
+    else:
+      raise base.Error('MOE already initialized')
   temp_dir = os.path.join(
       FLAGS.moe_temp, 'moe.%s' % getpass.getuser(), project_name)
   base.MakeDir(temp_dir)
@@ -75,6 +75,7 @@ def Init(project_name):
 
 
 def InitForTest():
+  """Initialize for test. Must be called before MOE would be initialized."""
   global RUN
   temp_dir = os.path.join(FLAGS.test_tmpdir)
   expander = base.CodebaseExpander(temp_dir)
@@ -82,4 +83,4 @@ def InitForTest():
   expander = base.CodebaseExpander(temp_dir)
   report = base.MoeReport()
   ui = moe_ui.MoeUI()
-  RUN = MoeRun(temp_dir, expander, report, ui)
+  RUN = MoeRun(temp_dir, expander, report, ui, for_test=True)

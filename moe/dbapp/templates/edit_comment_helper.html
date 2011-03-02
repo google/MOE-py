@@ -8,17 +8,16 @@
   Author: nicksantos@google.com (Nick Santos)
 {% endcomment %}
 
-<div class="goog-inline-block moe-save-area">
-<form action="/api/edit_comment?out=html" method="post">
+<div class="goog-inline-block moe-save-area"
+     action="/api/edit_comment?migration_id={{ migration.migration_id }}">
 <input type="hidden"
-     value="{{ comment.comment_id }}" name="comment_id">
+     value="{{ comment.comment_id }}" name="comment_id_{{ forloop.counter0 }}">
 <div class="moe-help-box">
   <div><b>Author:</b> {{ comment.author }}</div>
   <div><b>Date:</b> {{ comment.date }}</div>
   <div><b>File:</b> {{ comment.file }}:{{ comment.lineno }}</div><br/>
-  <textarea name="text" cols=60 rows=6>{{ comment.text }}</textarea><br/>
-  <input type="submit" value="Save">
+  <textarea name="comment_text_{{ forloop.counter0 }}"
+      cols=60 rows=6>{{ comment.text }}</textarea><br/>
   <span class="moe-save-area-feedback"></span>
 </div>
-</form>
 </div>

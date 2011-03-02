@@ -37,11 +37,9 @@ class CreateCodebaseCmd(appcommands.Cmd):
         'Project Space to create codebase in')
 
   def Run(self, unused_argv):
-    project, db = db_client.MakeProjectAndDbClient()
+    project = db_client.MakeProjectContext()
 
     try:
-      moe_app.Init(project.name)
-
       source_revision = FLAGS.source_revision
       source = FLAGS.source_repository
       if source not in base.REPOSITORIES:
@@ -49,13 +47,13 @@ class CreateCodebaseCmd(appcommands.Cmd):
                              str(base.REPOSITORIES))
 
       if source == base.INTERNAL_STR:
-        source_config = project.internal_repository
+        repository = project.internal_repository
+        codebase_creator = project.internal_codebase_creator
       elif source == base.PUBLIC_STR:
-        source_config = project.public_repository
+        repository = project.public_repository
+        codebase_creator = project.public_codebase_creator
       else:
         raise base.Error('Unexpected source: %s' % source)
-
-      repository, codebase_creator = source_config.MakeRepository()
 
       with moe_app.RUN.ui.BeginImmediateTask(
           'head_revision', 'Determining Head Revision') as t:
@@ -66,4 +64,4 @@ class CreateCodebaseCmd(appcommands.Cmd):
 
       moe_app.RUN.ui.Info('Codebase created at %s' % source_codebase.Path())
     finally:
-      db.Disconnect()
+      project.db.Disconnect()

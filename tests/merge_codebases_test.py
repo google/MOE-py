@@ -92,7 +92,9 @@ class MergeCodebasesTest(basetest.TestCase):
     codebase1 = config.merged_codebase
     codebase2 = os.path.join(scenario_base, 'expected')
 
-    different = base.AreCodebasesDifferent(codebase1, codebase2)
+    different = base.AreCodebasesDifferent(
+        codebase_utils.Codebase(codebase1),
+        codebase_utils.Codebase(codebase2))
 
     if different:
       # TODO(dbentley): this should describe how they differ.

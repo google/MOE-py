@@ -72,14 +72,14 @@ MOE_MIGRATION=%s
 class CodebasePusher(object):
   """Pushes codebases into editors."""
 
-  def __init__(self, source_codebase, destination_editor, report,
+  def __init__(self, source_codebase, destination_editor, report=None,
                files_to_ignore_re='', commit_message='', migration_id=''):
     """Construct.
 
     Args:
       source_codebase: codebase_utils.Codebase
       destination_editor: base.CodebaseEditor
-      report: base.MoeReport
+      report: base.MoeReport (deprecated)
       files_to_ignore_re: str, files that should be ignored
       commit_message: str, message to use for commit
       migration_id: str, the id of this migration
@@ -90,7 +90,6 @@ class CodebasePusher(object):
       self.files_to_ignore_re = re.compile(files_to_ignore_re)
     else:
       self.files_to_ignore_re = None
-    self.report = report
     self.commit_message = commit_message
     self.migration_id = migration_id
 
@@ -117,8 +116,8 @@ class CodebasePusher(object):
     # TODO(dbentley): allow client to pass in a change message
     commit_message = COMMIT_MESSAGE_TEMPLATE % (
         self.commit_message, self.migration_id)
-    self.destination_editor.FinalizeChange(commit_message, self.report)
-    commit_id = self.destination_editor.CommitChange(self.report)
+    self.destination_editor.FinalizeChange(commit_message, moe_app.RUN.report)
+    commit_id = self.destination_editor.CommitChange(moe_app.RUN.report)
 
     self.pushed = self.destination_editor.ChangesMade()
     return commit_id
@@ -153,17 +152,15 @@ class CodebasePusher(object):
 
 def main(unused_args):
 
-  project, db = db_client.MakeProjectAndDbClient()
+  project = db_client.MakeProjectContext()
 
   try:
+    # TODO(dbentley): this code should use functions in the logic module
+    # to know what revision to apply against.
+
     # TODO(dbentley): we shouldn't have to make a client just to get the config
     # NB(dbentley): this also saves the project, so we call it all the time
     # to save the config.
-    moe_app.Init(project.name)
-    temp_dir = moe_app.RUN.temp_dir
-    expander = moe_app.RUN.expander
-    report = moe_app.RUN.report
-
     source_revision = FLAGS.source_revision
     destination_revision = FLAGS.destination_revision
 
@@ -172,28 +169,22 @@ def main(unused_args):
       raise app.UsageError('destination should be one of %s' %
                            str(base.REPOSITORIES))
 
-    print 'Pushing codebase for MOE project %s into %s' % (project.name,
-                                                           destination)
+    print 'Pushing codebase for MOE project %s into %s' % (
+        project.config.name, destination)
 
     if destination == base.INTERNAL_STR:
-      source_config = project.public_repository
-      destination_config = project.internal_repository
+      source_codebase_creator = project.public_codebase_creator
+      destination_codebase_creator = project.internal_codebase_creator
     elif destination == base.PUBLIC_STR:
-      source_config = project.internal_repository
-      destination_config = project.public_repository
+      source_codebase_creator = project.internal_codebase_creator
+      destination_codebase_creator = project.public_codebase_creator
     else:
       raise base.Error('Unexpected destination: %s' % destination)
 
     if FLAGS.codebase:
-      source_codebase = codebase_utils.Codebase(
-          FLAGS.codebase, expander)
+      source_codebase = codebase_utils.Codebase(FLAGS.codebase)
     else:
-      _, source_codebase_creator = source_config.MakeRepository(
-          temp_dir, expander)
       source_codebase = source_codebase_creator.Create(source_revision)
-
-    _, destination_codebase_creator = destination_config.MakeRepository(
-        temp_dir, expander)
 
     migration_strategy = config.MigrationStrategy(
         merge_strategy=base.ERROR,
@@ -206,18 +197,21 @@ def main(unused_args):
     destination_editor = destination_codebase_creator.Create(
         destination_revision).MakeEditor(migration_strategy)
 
-    # TODO(dbentley): this is ugly, and mirrors what is done in actions.py
-    # Fix this.
-    # I believe we can now remove this additional_files_re, as it is
-    # accounted for in the call to Codebase.Walk()
-    additional_files_re = project.public_repository.additional_files_re
+    # TODO(dbentley):
+    # We should be able to remove this additional_files_re, as it is
+    # accounted for in the call to Codebase.Walk(). Unfortunately, we can't.
+    # Why? Because a generated codebase is currently, incorrectly, getting
+    # generated with the additional_files_re from the internal codebase,
+    # even when it should be in the public project space.
+    additional_files_re = (
+        project.config.public_repository_config.additional_files_re)
     pusher = CodebasePusher(
-        source_codebase, destination_editor, report,
+        source_codebase, destination_editor, report=None,
         files_to_ignore_re=additional_files_re)
     pusher.Push()
-    report.PrintSummary()
+    moe_app.RUN.report.PrintSummary()
   finally:
-    db.Disconnect()
+    project.db.Disconnect()
 
 
 class ChangeCmd(appcommands.Cmd):

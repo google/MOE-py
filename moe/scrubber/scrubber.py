@@ -36,6 +36,7 @@ from moe.scrubber import java_scrubber
 from moe.scrubber import line_scrubber
 from moe.scrubber import python_scrubber
 from moe.scrubber import renamer
+from moe.scrubber import replacer
 from moe.scrubber import sensitive_string_scrubber
 from moe.scrubber import usernames
 from moe.scrubber import whitelist
@@ -77,14 +78,15 @@ class ScrubberConfig(object):
 
     # General options.
     # If no ignore_files_re given, then we want to ignore no files, which means
-    # matching no strings. '^a' is a regex that matches no strings.
-    self.ignore_files_re = re.compile('^a')
+    # matching no strings. '$a' is a regex that matches no strings.
+    self.ignore_files_re = re.compile('$a')
     self.extension_map = []
     self.sensitive_words = []
     self.sensitive_res = []
     self.whitelist = whitelist.Whitelist([])
     self.scrub_sensitive_comments = True
     self.rearranging_config = {}
+    self.string_replacements = []
 
     # Username options.
     self.scrubbable_usernames = None
@@ -186,7 +188,14 @@ class ScrubberConfig(object):
     return self._sensitive_string_scrubbers
 
   def _PolyglotFileScrubbers(self):
-    return self._SensitiveStringScrubbers()
+    result = []
+    if self.string_replacements:
+      r = replacer.ReplacerScrubber(
+          (r['original'], r['replacement']) for r in self.string_replacements)
+      result.append(r)
+
+    result += self._SensitiveStringScrubbers()
+    return result
 
   def _CommentScrubbers(self):
     if not self._comment_scrubbers:
@@ -407,6 +416,9 @@ class ScrubberContext(object):
         Modified output is written into output_tar (as a tar file)
     """
     stopwatch.sw.start('write_output')
+    base.MakeDirs(os.path.join(self._temp_dir, OUTPUT_DIR))
+    base.MakeDirs(os.path.join(self._temp_dir, MODIFIED_DIR))
+
     for file_obj in self.files:
       # We want to be able to show all the modifications in one place.
       # Therefore, each file shows up in mutliple places.
@@ -551,6 +563,9 @@ class ScrubberContext(object):
     for file_obj in self.files:
       scrubbers = self.ScrubbersForFile(file_obj)
       for scrubber in scrubbers:
+        if file_obj.is_deleted:
+          # No need to further scrub a deleted file
+          break
         scrubber.ScrubFile(file_obj, self)
 
       sys.stdout.write('.')
@@ -570,6 +585,7 @@ _SCRUBBER_CONFIG_KEYS = [
     u'whitelist',
     u'scrub_sensitive_comments',
     u'rearranging_config',
+    u'string_replacements',
 
     # User options
     u'usernames_to_scrub',
@@ -658,6 +674,7 @@ def ScrubberConfigFromJson(codebase,
   config.whitelist = whitelist.Whitelist(whitelist_entries)
   SetOption(u'scrub_sensitive_comments')
   SetOption(u'rearranging_config')
+  SetOption(u'string_replacements')
 
   # User options.
   # TODO(dborowitz): Make the scrubbers pass unicode to the UsernameFilter.
@@ -870,7 +887,7 @@ class ScannedFile(object):
   def Delete(self):
     """Delete this file."""
     self.is_deleted = True
-    self._conents = ''
+    self._contents = ''
     self.is_modified = True
 
 

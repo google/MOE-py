@@ -1,0 +1,4 @@
+{
+  "sensitive_words": ["bubbles"],
+  "empty_java_file_action": "DELETE"
+}

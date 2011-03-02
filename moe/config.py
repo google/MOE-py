@@ -15,9 +15,9 @@ import gflags as flags
 
 from moe import base
 from moe import config_utils
+from moe import git
 from moe import mercurial
 from moe import svn
-from moe import translators as translators_
 
 FLAGS = flags.FLAGS
 
@@ -44,6 +44,8 @@ class MigrationStrategy(object):
     if commit_strategy not in base.COMMIT_STRATEGIES:
       raise ValueError('Invalid commit strategy %r' % commit_strategy)
 
+    # TODO(user): Check separate_revisions and copy_metadata for booleanness
+
     self.merge_strategy = merge_strategy
     self.commit_strategy = commit_strategy
     self.separate_revisions = separate_revisions
@@ -67,7 +69,7 @@ class MigrationStrategy(object):
             self.copy_metadata == other.copy_metadata)
 
 
-class MoeProject(object):
+class MoeProjectConfig(object):
   """Encapsulates a project configuration."""
   # TODO(dborowitz): copy documentation
 
@@ -75,25 +77,28 @@ class MoeProject(object):
     self.name = name
     self.filename = ''
     self.empty = True
-    self.internal_repository = EmptyRepositoryConfig()
-    self.public_repository = EmptyRepositoryConfig()
+    self.internal_repository_config = EmptyRepositoryConfig()
+    self.public_repository_config = EmptyRepositoryConfig()
     self.import_strategy = DefaultImportStrategy()
     self.export_strategy = DefaultExportStrategy()
     self.moe_db_url = None
     self.owners = []
     self.manual_equivalence_deltas = None
     self.noisy_files_re = None
+    self.config_json = {}
 
   def Serialized(self):
     """Return json representation for this project."""
-    result = {}
+    result = self.config_json
     result['name'] = self.name
     if self.filename:
       result['filename'] = self.filename
-    if self.internal_repository:
-      result['internal_repository'] = self.internal_repository.Serialized()
-    if self.public_repository:
-      result['public_repository'] = self.public_repository.Serialized()
+    if self.internal_repository_config:
+      result['internal_repository'] = (
+          self.internal_repository_config.Serialized())
+    if self.public_repository_config:
+      result['public_repository'] = (
+          self.public_repository_config.Serialized())
 
     result['import_strategy'] = self.import_strategy.Serialized()
     result['export_strategy'] = self.export_strategy.Serialized()
@@ -152,26 +157,23 @@ _PROJECT_CONFIG_KEYS = [
     ]
 
 
-def MoeProjectFromJson(config_json, filename=''):
-  """Create a MoeProject from a config JSON object."""
+def MoeProjectConfigFromJson(config_json, filename=''):
+  """Create a MoeProjectConfig from a config JSON object."""
   config_utils.CheckJsonKeys('project', config_json, _PROJECT_CONFIG_KEYS)
   project_name = config_json[u'name']
-  project = MoeProject(project_name)
+  project = MoeProjectConfig(project_name)
   project.empty = False
   project.filename = config_json.get(u'filename') or filename
 
-  project.translators = MakeTranslators(
-      config_json.get(u'translators', []))
+  project.translators = config_json.get(u'translators', [])
 
-  project.internal_repository = MakeRepositoryConfig(
+  project.internal_repository_config = MakeRepositoryConfig(
       config_json[u'internal_repository'],
-      repository_name=project_name + '_internal',
-      translators=project.translators)
+      repository_name=project_name + '_internal')
 
-  project.public_repository = MakeRepositoryConfig(
+  project.public_repository_config = MakeRepositoryConfig(
       config_json[u'public_repository'],
-      repository_name=project_name + '_public',
-      translators=project.translators)
+      repository_name=project_name + '_public')
 
   project.noisy_files_re = config_json.get('noisy_files_re')
   project.moe_db_url = config_json.get('moe_db_url')
@@ -193,16 +195,16 @@ def ParseConfigFile(filename):
   text = filename and file_util.Read(filename) or ''
   filename = os.path.abspath(filename)
   relative_name = config_utils.MakeConfigFilenameRelative(filename)
-  return MoeProjectFromJson(config_utils.LoadConfig(text), relative_name)
+  return ParseConfigText(text, relative_name)
 
 
-def MakeMoeProject():
+def MakeMoeProjectConfig():
   """Make the MOE project for this invocation.
 
   NB: may be empty
 
   Returns:
-    config.MoeProject
+    config.MoeProjectConfig
   """
   name = FLAGS.project
 
@@ -222,7 +224,7 @@ class EmptyRepositoryConfig(base.RepositoryConfig):
   def __init__(self):
     self.additional_files_re = None
 
-  def MakeRepository(self):
+  def MakeRepository(self, translators=None):
     return None, None
 
   def Serialized(self):
@@ -232,64 +234,30 @@ class EmptyRepositoryConfig(base.RepositoryConfig):
     return {'name': 'empty'}
 
 
-def MakeRepositoryConfig(json_config, repository_name='', translators=None):
+def MakeRepositoryConfig(json_config, repository_name=''):
   """Make the populate repository config from json.
 
   Args:
     json_config: json object
     repository_name: str, the name of the project this repository is in
-    translators: seq of translators.Translator, the translators available to
-                 this repository
 
   Returns:
     base.RepositoryConfig
   """
-  translators = translators or []
   repository_type = json_config['type']
   if repository_type == 'svn':
     return svn.SvnRepositoryConfig(json_config,
                                    username=FLAGS.public_username,
                                    password=FLAGS.public_password,
-                                   repository_name=repository_name,
-                                   translators=translators)
+                                   repository_name=repository_name)
   if repository_type == 'mercurial':
     return mercurial.MercurialRepositoryConfig(json_config,
-                                               repository_name=repository_name,
-                                               translators=translators)
+                                               repository_name=repository_name)
+  if repository_type == 'git':
+    return git.GitRepositoryConfig(json_config,
+                                   repository_name=repository_name)
   raise base.Error('unknown repository type: %s' % repository_type)
-
-_TRANSLATOR_CONFIG_KEYS = [
-    u'from_project_space',
-    u'to_project_space',
-    u'scrubber_config',
-    u'type',
-    ]
-
-
-def MakeTranslators(translators_config):
-  """Construct the Translators from their config.
-
-  Args:
-    translators_config: array of dictionaries (of the sort that come from JSON)
-
-  Returns:
-    list of translators.Translator
-  """
-  result = []
-  for config_json in translators_config:
-    config_utils.CheckJsonKeys('translator_config', config_json,
-                               _TRANSLATOR_CONFIG_KEYS)
-    if config_json.get(u'type') == u'scrubber':
-      result.append(translators_.ScrubberInvokingTranslator(
-          config_json.get('from_project_space'),
-          config_json.get('to_project_space'),
-          config_json.get('scrubber_config'),
-          ))
-      continue
-    raise base.Error('Translator config requries a "type"')
-
-  return result
 
 
 def ParseConfigText(text, filename=''):
-    return MoeProjectFromJson(config_utils.LoadConfig(text), filename)
+  return MoeProjectConfigFromJson(config_utils.LoadConfig(text), filename)

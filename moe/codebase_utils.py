@@ -9,6 +9,7 @@ __author__ = 'dbentley@google.com (Daniel Bentley)'
 import os
 import re
 import shutil
+import tempfile
 
 from moe import base
 from moe import moe_app
@@ -50,6 +51,10 @@ class Codebase(object):
   def ProjectSpace(self):
     """Which project space this Codebase is in. (one of base.PROJECT_SPACES)."""
     return self._project_space
+
+  def AdditionalFilesRe(self):
+    """RegEx object describing files that are extraneous in this Codebase."""
+    return self._additional_files_re
 
   def Walk(self):
     """Return the files in the Codebase.
@@ -223,3 +228,15 @@ class ExportingCodebaseCreator(CodebaseCreator):
                         additional_files_re=self._additional_files_re,
                         project_space=self._project_space)
       return result
+
+
+def CreateModifiableCopy(codebase):
+  """Create a modifiable copy of this codebase_utils.Codebase."""
+  new_dir = tempfile.mkdtemp(
+      dir=moe_app.RUN.temp_dir,
+      prefix='modified_codebase_')
+
+  os.rmdir(new_dir)
+  shutil.copytree(codebase.ExpandedPath(), new_dir)
+
+  return Codebase(new_dir, additional_files_re=codebase.AdditionalFilesRe())

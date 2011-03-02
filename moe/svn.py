@@ -250,7 +250,7 @@ class SvnEditor(base.CodebaseEditor):
       # TODO(dbentley): handle newly-empty directories
       return
 
-    # mv the file
+    # Update/create the file
     base.MakeDir(os.path.dirname(abs_dest))
     shutil.copyfile(src, abs_dest)
 
@@ -261,7 +261,7 @@ class SvnEditor(base.CodebaseEditor):
       mimetype, _ = mimetypes.guess_type(relative_dest)
       if mimetype:
         # force this
-        if mimetype == 'application/x-javascript':
+        if mimetype in ['application/x-javascript', 'application/javascript']:
           mimetype = 'text/javascript'
 
         self.RunSvn(['propset', 'svn:mime-type', mimetype, relative_dest])
@@ -431,15 +431,12 @@ class SvnRepository(base.SourceControlRepository):
     return SvnClient(self, directory, username, password)
 
   def GetHeadRevision(self, highest_rev_id=''):
-    # TODO(dbentley): consider highest_rev_id.
-    # This is a little complicated, because if highest_rev_id,
-    # we should see if it exists and use it.
-    # Then fall through to picking the highest.
-    info = RunSvn(['info', self._url, '--xml'],
-                  need_stdout=True)
+    info = RunSvn(
+        ['log', '--xml', '-r', '%s:1' % (highest_rev_id or 'HEAD'), self._url],
+        need_stdout=True)
     info_tree = ElementTree.XML(info)
-    entry = info_tree.find('entry')
-    i = int(entry.get('revision'))
+    log = info_tree.find('logentry')
+    i = int(log.get('revision'))
     return str(i)
 
   def MakeRevisionFromId(self, id):
@@ -451,13 +448,9 @@ class SvnRepository(base.SourceControlRepository):
     limit = 50
     while True:
       head_revision_int = int(head_revision)
-      stop_revision_int = head_revision_int - limit
-      if stop_revision_int < 1:
-        stop_revision_int = 1
 
-      text = RunSvn(['log', '--xml', '-r',
-                     '%s:%s' % (str(head_revision_int),
-                                str(stop_revision_int)),
+      text = RunSvn(['log', '--xml', '-l', str(limit), '-r',
+                     '%s:1' % str(head_revision_int),
                      self._url], need_stdout=True)
       revisions = ParseRevisions(text, self._repository_name)
       result = []
@@ -502,15 +495,15 @@ def ParseRevisions(text, repository_name):
 
     changelog = ''
     if entry.find('msg') is not None:
-      changelog = entry.find('msg').text
+      changelog = entry.find('msg').text or ''
 
     author = ''
     if entry.find('author') is not None:
-      author = entry.find('author').text
+      author = entry.find('author').text or ''
 
     time = ''
     if entry.find('date') is not None:
-      time = entry.find('date').text
+      time = entry.find('date').text or ''
 
     result.append(base.Revision(rev_id=rev_id, repository_name=repository_name,
                                 changelog=changelog,
@@ -521,8 +514,7 @@ def ParseRevisions(text, repository_name):
 class SvnRepositoryConfig(base.RepositoryConfig):
   """Configuration for a repository that lives in Subversion."""
 
-  def __init__(self, config_json, username='', password='', repository_name='',
-               translators=None):
+  def __init__(self, config_json, username='', password='', repository_name=''):
     if config_json['type'] != 'svn':
       raise base.Error('type %s is not svn' % config_json['type'])
     self.url = config_json['url']
@@ -534,16 +526,15 @@ class SvnRepositoryConfig(base.RepositoryConfig):
       self._repository_name = repository_name + '_svn'
     else:
       self._repository_name = ''
-    self._translators = translators or []
 
-  def MakeRepository(self, temp_dir='', expander=''):
+  def MakeRepository(self, translators=None):
     repository = SvnRepository(self.url, self._repository_name)
     return (repository,
             codebase_utils.ExportingCodebaseCreator(
                 repository, self.username, self.password,
                 repository_name=self._repository_name,
                 additional_files_re=self.additional_files_re,
-                translators=self._translators))
+                translators=translators))
 
   def Serialized(self):
     return self._config_json

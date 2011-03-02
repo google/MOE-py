@@ -8,14 +8,10 @@
   Author: nicksantos@google.com (Nick Santos)
 {% endcomment %}
 
-<div class="goog-inline-block moe-save-area">
-<form action="/api/edit_changelog?out=html" method="post">
-<input type="hidden"
-     value="{{ migration.migration_id }}" name="migration_id">
+<div class="goog-inline-block moe-save-area"
+     action="/api/edit_changelog?migration_id={{ migration.migration_id }}">
 <div class="moe-help-box">
   <textarea name="changelog" cols=80 rows=8>{{ migration.changelog }}</textarea><br/>
-  <input type="submit" value="Save">
   <span class="moe-save-area-feedback"></span>
 </div>
-</form>
 </div>

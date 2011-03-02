@@ -86,17 +86,15 @@ def GetProject(project_name):
   return p
 
 
+def QueryProject(model, project):
+  return db.Query(model).filter('project =', project)
+
+
 def GetEquivalence(project, internal_revision, public_revision):
-  q = (db.Query(models.Equivalence).filter('project =', project)
+  q = (QueryProject(models.Equivalence, project)
        .filter('internal_revision =', internal_revision)
        .filter('public_revision =', public_revision))
   return q.get()
-
-
-def GetMigrations(project):
-  q = (db.Query(models.Migration).filter('project =', project)
-       .filter('status =', models.STATUS_ACTIVE))
-  return q.fetch(1000)
 
 
 def GetCommentsByMigration(migration):
@@ -121,18 +119,41 @@ def RevisionKeyName(rev_id, repository_name):
   return '%s:%s' % (repository_name, rev_id)
 
 
-def FindEquivalences(internal_revision_obj=None,
-                     public_revision_obj=None):
-  if not internal_revision_obj and not public_revision_obj:
-    raise Error('Neither internal nor public given')
-  q = db.Query(models.Equivalence)
+def FindEquivalences(project,
+                     internal_revision_obj=None,
+                     public_revision_obj=None,
+                     verification_status=None):
+  if (not internal_revision_obj and not public_revision_obj and
+      verification_status is None):
+    raise Error('Neither internal nor public nor verification_status given')
+  q = QueryProject(models.Equivalence, project)
   if internal_revision_obj:
     q.filter('internal_revision_obj =', internal_revision_obj)
   if public_revision_obj:
     q.filter('public_revision_obj =', public_revision_obj)
+  if verification_status:
+    q.filter('verification_status =', int(verification_status))
   result = list(q.fetch(1000))
+  if not verification_status:
+    # By default, we do *not* want invalid equivalences.
+    result = [e for e in result
+              if not e.verification_status == models.VERIFICATION_INVALID]
 
   return result
+
+
+def FindEquivalencesList(project,
+                         internal_revisions=None,
+                         public_revisions=None):
+  if (not internal_revisions and not public_revisions):
+    raise Error('Neither internal nor public given')
+  q = QueryProject(models.Equivalence, project)
+  if internal_revisions:
+    q.filter('internal_revision_obj IN ', internal_revisions)
+  if public_revisions:
+    q.filter('public_revision_obj IN ', public_revisions)
+  return [e for e in q.fetch(1000)
+          if not e.verification_status == models.VERIFICATION_INVALID]
 
 
 def GetRevisionFromRequest(request, project, param_name, repository=None):
@@ -205,10 +226,6 @@ def EnsureRevisionExists(rev_id, repository):
   return revision
 
 
-def GetMigration(migration_id):
-  return models.Migration.get_by_id(migration_id)
-
-
 def MigrationKeynameFromRevisionObj(up_to_revision):
   """A migration's keyname is the keyname of its up_to_revision.
 
@@ -221,6 +238,12 @@ def MigrationKeynameFromRevisionObj(up_to_revision):
 def LookupMigrationByRevision(up_to_revision):
   key_name = MigrationKeynameFromRevisionObj(up_to_revision)
   return models.Migration.get_by_key_name(key_name)
+
+
+def LookupMigrationsByRevisions(project, revisions):
+  q = (QueryProject(models.Migration, project)
+       .filter('up_to_revision IN', revisions))
+  return list(q.fetch(1000))
 
 
 def LookupMigrationByMigrationId(migration_id):
@@ -237,27 +260,25 @@ def LookupMigrationByMigrationId(migration_id):
 
 
 def GetPendingMigrations(project):
-  q = db.Query(models.Migration).filter('project =', project)
-  migrations = [m for m in q.fetch(1000) if
-                (m.status == models.STATUS_ACTIVE or
-                 m.status == models.STATUS_APPROVED)]
-  return migrations
+  q = (QueryProject(models.Migration, project)
+       .filter('status IN ', [models.STATUS_ACTIVE, models.STATUS_APPROVED]))
+  return list(q.fetch(1000))
 
 
 def GetProcess(project, process_id):
-  q = (db.Query(models.Process).filter('project =', project)
+  q = (QueryProject(models.Process, project)
        .filter('process_id =', process_id))
   return q.get()
 
 
 def GetLastSeenProcess(project):
-  q = (db.Query(models.Process).filter('project =', project)
+  q = (QueryProject(models.Process, project)
        .order('-last_seen'))
   return q.get()
 
 
 def GetProcessRange(project, start_time, end_time):
-  q = (db.Query(models.Process).filter('project =', project)
+  q = (QueryProject(models.Process, project)
        .filter('start_time >', start_time))
   # filter can have at most one inequality
   result = [p for p in q if p.end_time and p.end_time < end_time]
@@ -305,13 +326,6 @@ def EnsureRepositoryExists(name):
   return repository
 
 
-def GetMigrationRange(project, start_time, end_time):
-  q = (db.Query(models.Migration).filter('project =', project)
-       .filter('last_seen >', start_time))
-  result = [m for m in q if m.last_seen and m.last_seen < end_time]
-  return result
-
-
 def GetProjectScore(project):
   """Get scores for aspects of this project.
 
@@ -353,6 +367,17 @@ class ProjectPage(webapp.RequestHandler):
           base.RenderTemplate('no-such-project.html',
                               {'project_name' : project_name}))
       self.error(404)
+      return
+
+    if not project.internal_repository:
+      # If we don't have any repositories for this project, then that
+      # means the project hasn't been properly set up. In particular, it
+      # needs to note an equivalence. Give it the form template.
+      template_values = {
+        'project_name': project_name,
+        }
+      self.response.out.write(
+          base.RenderTemplate('forms.html', template_values))
       return
 
     recent_history = GetRecentHistory(project)
@@ -535,27 +560,19 @@ class MoeApiRequestHandler(webapp.RequestHandler):
     return comment
 
 
-  def _SetMigration(self, status,
-                    submitted_as=None):
+  def _SetMigration(self, status):
     """Set data on a migration, creating a new migration object if necessary.
 
     Args:
       status: one of models.STATUS_VALUES, the migration status
-      start_migrated_revision: str, the first revision the migration is based on
-      end_migrated_revision: str, the last migration the migration is based on
-      base_revision: str, the target revision against which the migration is done
-      submitted_revision: str, the target revision that the migration has been
-                          submitted as
 
     Args from http request:
       project_name: the name of the project
       changelog: the content of the migration's changelog
       diff: the content of the diff for the migration
       link: a (URL) link to the migration's diff content
-      equivalence_internal_revision: the internal revision of the equivalence
-                                     that the migration is based on
-      equivalence_public_revision: the public revision of the equivalence
-                                   that the migration is based on
+      up_to_revision: The id of the change being migrated
+      submitted_as: The id of the submitted migration
       direction: one of {export, import}, the direction of the migration
     """
     project = self._RequireProject()
@@ -668,7 +685,7 @@ class UpdateProject(MoeApiRequestHandler):
     # in the new style that are computed on the client. Thus, for now, every
     # time we update a project, we try to copy the most recent old-style
     # equivalence into a new-style equivalence.
-    q = (db.Query(models.Equivalence).filter('project =', project)
+    q = (QueryProject(models.Equivalence, project)
          .order('-sequence'))
     e = q.get()
     if e and e.internal_revision and e.public_revision:
@@ -676,7 +693,8 @@ class UpdateProject(MoeApiRequestHandler):
                                                    project.internal_repository)
       public_revision_obj = EnsureRevisionExists(e.public_revision,
                                                  project.public_repository)
-      e2 = FindEquivalences(internal_revision_obj=internal_revision_obj,
+      e2 = FindEquivalences(project,
+                            internal_revision_obj=internal_revision_obj,
                             public_revision_obj=public_revision_obj)
       if not e2:
         e3 = models.Equivalence(project=project,
@@ -716,7 +734,8 @@ class NoteEquivalence(MoeApiRequestHandler):
       self._WriteJsonResult(error=400, error_message='No public_revision')
       return
 
-    e = FindEquivalences(internal_revision_obj=internal_revision_obj,
+    e = FindEquivalences(project,
+                         internal_revision_obj=internal_revision_obj,
                          public_revision_obj=public_revision_obj)
 
     if not e:
@@ -724,7 +743,22 @@ class NoteEquivalence(MoeApiRequestHandler):
           project=project,
           internal_revision_obj=internal_revision_obj,
           public_revision_obj=public_revision_obj)
-      e.put()
+    else:
+      # There should be only one such equivalence, but FindEquivalences has no
+      # get() (as opposed to fetch()).
+      if len(e) > 1:
+        self._WriteJsonResult(
+            error=400,
+            error_message=
+            'More than one equivalence exists. Internal: %s Public: %s' % (
+                internal_revision_obj.rev_id, public_revision_obj.rev_id))
+      e = e[0]
+
+    verification_status = self.request.get('verification_status')
+    if verification_status:
+      e.verification_status = int(verification_status)
+
+    e.put()
 
     self._WriteJsonResult(redirect='/project/%s' % project.name)
 
@@ -741,15 +775,21 @@ class FindEquivalencesPage(MoeApiRequestHandler):
     public_revision_obj = GetRevisionFromRequest(
         self.request, project, 'public_revision')
 
-    if not internal_revision_obj and not public_revision_obj:
+    verification_status = self.request.get('verification_status')
+
+    if (not internal_revision_obj and not public_revision_obj and
+        verification_status is None):
       self._WriteJsonResult(
           error=400,
           error_message=
-          'Must specify at least one of internal or private revision.')
+          'Must specify at least one of internal or private revision '
+          'or verification status.')
       return
 
-    equivalences = FindEquivalences(internal_revision_obj=internal_revision_obj,
-                                    public_revision_obj=public_revision_obj)
+    equivalences = FindEquivalences(project,
+                                    internal_revision_obj=internal_revision_obj,
+                                    public_revision_obj=public_revision_obj,
+                                    verification_status=verification_status)
 
     data = {
         'equivalences': [e.DictForJson() for e in equivalences],
@@ -769,7 +809,8 @@ class MigrationForRevision(MoeApiRequestHandler):
       return
 
     # then, query the DB
-    q = db.Query(models.Migration).filter('up_to_revision =', r)
+    q = (QueryProject(models.Migration, project)
+         .filter('up_to_revision =', r))
     result = q.get()
     if result:
       result = result.DictForJson()
@@ -809,11 +850,62 @@ class ApproveMigration(MoeApiRequestHandler):
                             'not pending' % migration_id)
       return
 
+    # If we got a changelog update, commit that.
+    changelog = self.request.get('changelog', default_value=None)
+    if changelog is not None:
+      migration.AddChangelog(changelog)
+
     migration.status = models.STATUS_APPROVED
     migration.put()
+
+    # If we got comment updates, commit them as well.
+    comment_specs = self.GetCommentSpecs()
+    if comment_specs:
+      self.CommitCommentSpecs(comment_specs)
+
     redirect = self.request.get('redirect', '/project/%s'
                                 % migration.project.name)
     self._WriteJsonResult(redirect=redirect)
+
+  def GetCommentSpecs(self):
+    """Returns a list of (id, text) tuples in the request"""
+    comment_specs = []
+    index = 0
+    comment_id = self.TryGetCommentId(index)
+    while comment_id is not None:
+      comment_specs.append(
+          (comment_id,
+           self.request.get('comment_text_%d' % index)))
+      index = index + 1
+      comment_id = self.TryGetCommentId(index)
+
+    return comment_specs
+
+  def CommitCommentSpecs(self, comment_specs):
+    """Commits a bunch of comment changes to the database.
+
+    Tries to minimize the number of database calls.
+
+    Args:
+      comment_specs: A list of (id, text) pairs. All strings."""
+    comment_ids = [int(spec[0]) for spec in comment_specs]
+
+    # A map from comment ids to text contents.
+    comment_dict = {}
+    for spec in comment_specs:
+      comment_dict[spec[0]] = spec[1]
+
+    q = db.Query(models.Comment).filter('comment_id IN ', comment_ids)
+    comments = list(q.fetch(len(comment_ids)))
+    for comment in comments:
+      new_text = comment_dict[str(comment.comment_id)]
+      if comment.text is not new_text:
+        comment.text = new_text
+        comment.put()
+
+  def TryGetCommentId(self, index):
+    """Checks if the request contains a comment ID at the given index."""
+    return self.request.get('comment_id_%d' % index, default_value=None)
 
 
 class UnapproveMigration(MoeApiRequestHandler):
@@ -1018,18 +1110,24 @@ class GetLastProcess(MoeApiRequestHandler):
     self._WriteJsonResult(data=data)
 
 
-def GetRecentRevisions(repository, num_revisions=20):
+def GetRecentRevisions(repository, project=None, num_revisions=20):
   """Get Recent Revisions.
 
   Args:
     repository: models.Repository, the repository whose revisions to get
       we ought.
+    project: models.Project, restrict the query to a given project.
     num_revisions: int, maximum number of revisions to fetch.
 
   Returns:
     list of models.Revisions
   """
   q = db.Query(models.Revision).filter('repository_name =', repository.name)
+  # TODO(nicksantos): filter by project once the revisions have projects.
+  # But talk to dbentley to make sure that we really want to do this.
+  # if project:
+  #    q.filter('project =', project)
+
   # TODO(dbentley): eventually, it would be great to use the partial
   # order implied in the actual VCS.
   q.order('-time')
@@ -1080,7 +1178,7 @@ class EditComment(MoeApiRequestHandler):
     if not comment:
       return
 
-    comment.text = self.request.get('text')
+    comment.text = self.request.get('comment_text')
     comment.put()
 
     self._WriteJsonResult(
@@ -1147,24 +1245,23 @@ class RecentHistoryPage(MoeApiRequestHandler):
 
 def GetRecentHistory(project):
   """Get the recent history of a project."""
-  internal_revisions = GetRecentRevisions(project.internal_repository)
-
-  public_revisions = GetRecentRevisions(project.public_repository)
+  internal_revisions = GetRecentRevisions(
+      project.internal_repository, project=project)
+  public_revisions = GetRecentRevisions(
+      project.public_repository, project=project)
 
   equivalences = set()
   exports = set()
-  for r in internal_revisions:
-    equivalences.update(FindEquivalences(internal_revision_obj=r))
-    export = LookupMigrationByRevision(r)
-    if export:
-      exports.add(export)
-
   imports = set()
-  for r in public_revisions:
-    equivalences.update(FindEquivalences(public_revision_obj=r))
-    i = LookupMigrationByRevision(r)
-    if i:
-      imports.add(i)
+  if internal_revisions:
+    equivalences.update(
+        FindEquivalencesList(project, internal_revisions=internal_revisions))
+    exports = set(LookupMigrationsByRevisions(project, internal_revisions))
+
+  if public_revisions:
+    equivalences.update(
+        FindEquivalencesList(project, public_revisions=public_revisions))
+    imports = set(LookupMigrationsByRevisions(project, public_revisions))
 
   return {'internal_revisions': internal_revisions,
           'public_revisions': public_revisions,

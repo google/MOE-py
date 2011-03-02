@@ -28,12 +28,42 @@ moe.SaveArea = function() {
 goog.inherits(moe.SaveArea, goog.ui.Component);
 
 
+/**
+ * @type {Element}
+ * @private
+ */
+moe.SaveArea.prototype.feedbackEl_;
+
+/**
+ * @type {Element}
+ * @private
+ */
+moe.SaveArea.prototype.saveButtonEl_;
+
+/** @override */
+moe.SaveArea.prototype.decorateInternal = function(el) {
+  goog.base(this, 'decorateInternal', el);
+
+  this.feedbackEl_ = goog.dom.getElementsByTagNameAndClass(
+      '*', 'moe-save-area-feedback', this.getElement())[0];
+
+  var previousSib = this.feedbackEl_.previousSibling;
+  if (!previousSib || previousSib.tagName != 'BUTTON') {
+    goog.dom.insertSiblingBefore(
+        goog.dom.createDom('input', {'type': 'button', 'value': 'Save'}),
+        this.feedbackEl_);
+  }
+  this.saveButtonEl_ = this.feedbackEl_.previousSibling;
+};
+
+
+
 /** @override */
 moe.SaveArea.prototype.enterDocument = function() {
   this.getHandler().listen(
-      this.getElement(),
-      'submit',
-      this.handleFormSubmit_);
+      this.saveButtonEl_,
+      'click',
+      this.handleSave_);
 };
 
 
@@ -57,17 +87,10 @@ moe.SaveArea.prototype.setButtonsEnabled_ = function(enable) {
  * @param {goog.events.BrowserEvent} e
  * @private
  */
-moe.SaveArea.prototype.handleFormSubmit_ = function(e) {
-  e.preventDefault();
-
+moe.SaveArea.prototype.handleSave_ = function(e) {
+  // Find the URL that we want to post on.
   var root = this.getElement();
-
-  // Find the URL that we want to post on. Modify this URL so that the server
-  // returns the results as JSON instead of an HTML page.
-  var form = goog.dom.getElementsByTagNameAndClass(
-      'form', null, root)[0];
-  var postUrl = new goog.Uri(form.action);
-  postUrl.removeParameter('out');
+  var postUrl = new goog.Uri(root.getAttribute('action'));
 
   // Add the edited text to the POST content.
   var postContent = [];
@@ -76,8 +99,10 @@ moe.SaveArea.prototype.handleFormSubmit_ = function(e) {
   for (var i = 0; i < elements.length; i++) {
     var el = elements[i];
     if (el.name) {
+      // strip off any indices.
+      var name = el.name.replace(/_[0-9]+$/, '');
       postContent.push(
-          encodeURIComponent(el.name) + '=' +
+          encodeURIComponent(name) + '=' +
           encodeURIComponent(el.value));
     }
   }
@@ -99,9 +124,7 @@ moe.SaveArea.prototype.handleFormSubmit_ = function(e) {
  * @param {string} msg
  */
 moe.SaveArea.prototype.setFeedback_ = function(msg) {
-  var feedback = goog.dom.getElementsByTagNameAndClass(
-      '*', 'moe-save-area-feedback', this.getElement())[0];
-  goog.dom.setTextContent(feedback, msg);
+  goog.dom.setTextContent(this.feedbackEl_, msg);
 };
 
 

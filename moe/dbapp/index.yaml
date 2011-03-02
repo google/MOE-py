@@ -22,7 +22,13 @@ indexes:
 - kind: Migration
   properties:
   - name: project
+  - name: up_to_revision
   - name: last_seen
+
+- kind: Migration
+  properties:
+  - name: project
+  - name: status
 
 - kind: Revision
   properties:

@@ -25,7 +25,7 @@ def setUp():
 class EquivalenceTest(basetest.TestCase):
 
   def testEquivalent(self):
-    project = test_util.EmptyMoeProject()
+    project = test_util.EmptyMoeProjectConfig()
     ec = actions.EquivalenceCheck(
         '1001', '1', project, actions.EquivalenceCheck.ErrorIfDifferent)
 
@@ -39,7 +39,7 @@ class EquivalenceTest(basetest.TestCase):
     self.assertEqual(result, None)
 
   def testEquivalentIfDifferentButHaveManualDeltas(self):
-    project = test_util.EmptyMoeProject()
+    project = test_util.EmptyMoeProjectConfig()
     project.manual_equivalence_deltas = True
     ec = actions.EquivalenceCheck(
         '1001', '1', project, actions.EquivalenceCheck.ErrorIfDifferent)
@@ -54,7 +54,7 @@ class EquivalenceTest(basetest.TestCase):
     self.assertEqual(result, None)
 
   def testDifferent(self):
-    project = test_util.EmptyMoeProject()
+    project = test_util.EmptyMoeProjectConfig()
     ec = actions.EquivalenceCheck(
         '1001', '1', project, actions.EquivalenceCheck.ErrorIfDifferent)
 

@@ -70,6 +70,8 @@ There are no pending migrations.
 migration_ids.push({{ migration.migration_id }});
 </script>
 
+{% include "migration_approval_start.html" %}
+
 <div class="g-section g-tpl-75-25 g-split">
   <div class="g-unit g-first">
     <div class="g-c">
@@ -84,9 +86,11 @@ migration_ids.push({{ migration.migration_id }});
     </div>
   </div>
   <div class="g-unit">
-    {% include "migration_approval_helper.html" %}
+    {% include "migration_approval_end.html" %}
   </div>
 </div>
+
+</form>
 
 {% endfor %}
 

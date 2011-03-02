@@ -1,0 +1,28 @@
+{# Copyright 2011 Google Inc. All Rights Reserved. #}
+
+{% comment %}
+  Form for noting an exported migration.
+
+  Args:
+    project_name: The name of the project. If not specified, we will ask
+       the user to input a project name.
+
+  Author: nicksantos@google.com (Nick Santos)
+{% endcomment %}
+
+<h2>Note an export:</h2>
+
+<p>Like importing, but in the opposite direction.
+<form action="/api/note_migration?out=html" method="post">
+  {% if project_name  %}
+    <input type="hidden" value="{{ project_name }}" name="project_name">
+  {% else %}
+    <div>Project Name: <input type="text" name="project_name"></div>
+  {% endif %}
+  <input type="hidden" name="direction" value="export">
+  <div>Took internal revision
+    <input type="text" name="up_to_revision_id"></div>
+  <div>and submitted it in the public codebase as
+    <input type="text" name="submitted_as_id"></div>
+  <div><input type="submit" value="Note this migration"></div>
+</form>

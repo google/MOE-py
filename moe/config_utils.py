@@ -29,7 +29,8 @@ def CheckJsonKeys(name, json_dict, allowed):
     ValueError: if keys other than the allowed keys are found.
   """
   if not isinstance(json_dict, dict):
-    raise TypeError('Expected dict, got %s' % type(json_dict))
+    raise TypeError('Expected dict, got %s (type: %s)' % (json_dict,
+                                                          type(json_dict)))
   json_dict = _StripComments(json_dict)
   allowed = set(allowed)
   unknown = sorted(k for k in json_dict if k not in allowed)
@@ -101,6 +102,32 @@ def ReadConfigResource(resource_name):
   return _ReadJsonFileObj(resources.GetResourceAsFile(resource_name))
 
 
+# Users like being able to type --project foo instead of
+# --project_config_file /path/to/foo. So users want some amount of magic.
+# Users also want to be able to type --project foo and have it update
+# the project when they update the config file. So they want even more magic.
+# But you, a reader of this code, want simplicity and comprehensibility. This
+# comment describes our strategy.
+
+# *) We inject into the config files a "filename" property. This lets us
+#    remember where to find the config file for this project.
+# *) We can store the absolute filename. This is useful if the file is always
+#    updated in one place.
+# *) OR, we can store a relative filename. This is where the magic begins.
+#    Because if we are storing a relative filename, the question becomes:
+#    relative to what? We currently support one model: that of the "monolithic
+#    codebase". In this model, the monolithic codebase has a name; call it
+#    "monolith". We expect two things:
+#    a) the name appears in the path of any file in the monolithic codebase.
+#    b) there is a mirror of the file available at a root.
+# *) We store the relative filename so that we read it out of a relative
+#    location. This changes between runs, from /home/usera/srcs/foo.txt to
+#    /home/userb/srcs/foo.txt, e.g. This prevents staleness of the stored
+#    moe config when the moe config is stored in the monolithic codebase.
+
+#  (These constants are MONOLITHIC_CODEBASE_NAME and
+#  MONOLITHIC_CODEBASE_MIRROR respectively.)
+
 # The strategy for determining absolute/relative filenames if (currently)
 # inflexible. It assumes that MONOLITHIC_CODEBASE_NAME appears as a path
 # element in the filename. MONOLITHIC_CODEBASE_MIRROR is a path to a current-ish
@@ -123,15 +150,15 @@ def MakeConfigFilenameRelative(absolute_filename):
     looks at MONOLITHIC_CODEBASE_NAME to determine where the monolithic
     codebase starts. e.g., if MONOLITHIC_CODEBASE_NAME is 'bar', then in
     the path /foo/bar/baz/quux , the relative name is baz/quux.
+    If we cannot determine a relative name, because absolute_filename is not
+    in the monolithic codebase, we return absolute_filename.
   """
   if not os.path.isabs(absolute_filename):
     raise base.Error('%s is not an absolute path' % absolute_filename)
   s = os.path.sep + MONOLITHIC_CODEBASE_NAME + os.path.sep
   occurrence = absolute_filename.rfind(s)
   if occurrence == -1:
-    raise base.Error(
-        'Cannot determine root. (%s does not occur in %s)' % (
-            MONOLITHIC_CODEBASE_NAME, absolute_filename))
+    return absolute_filename
   return absolute_filename[occurrence + len(s):]
 
 
@@ -143,7 +170,12 @@ def MakeConfigFilenameAbsolute(relative_filename):
 
   Returns:
     str, what to pass to open() to load the config file
+
+  NB:
+    if relative_filename is already absolute, we return relative_filename
   """
+  if os.path.isabs(relative_filename):
+    return relative_filename
   cwd = os.getcwd()
   if MONOLITHIC_CODEBASE_NAME in cwd.split(os.path.sep):
     monolithic_root = re.match('.*' + os.path.sep + MONOLITHIC_CODEBASE_NAME,

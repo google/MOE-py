@@ -44,6 +44,9 @@ class SVNTest(basetest.TestCase):
   def testLongLog(self):
     self.RunScenario('long_log', FilterLog)
 
+  def testEmptyLog(self):
+    self.RunScenario('empty_log', FilterLog)
+
   def RunScenario(self, scenario_name, filter_to_test):
     UNRUN_SCENARIOS.remove(scenario_name)
     scenario_base = os.path.join(SCENARIOS_DIR, scenario_name)

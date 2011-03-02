@@ -3,29 +3,27 @@
 {% block title %}Project Editor{% endblock %}
 
 {% block body %}
-<h1>Create/Update a project:</h1>
+
+
+<div class="g-section g-tpl-33-67 g-split">
+<div class="g-unit g-first">
+
+{% if not project_name %}
+<h2>Create/Update a project:</h2>
 <form action="/api/update_project?out=html" method="post">
   <div>Project Name: <input type="text" name="project_name"></div>
   <div><input type="submit" value="create"></div>
 </form>
+{% endif %}
 
-<h1>Note an equivalence:</h1>
-<form action="/api/note_equivalence?out=html" method="post">
-  <div>Project Name: <input type="text" name="project_name"></div>
-  <div>Internal Revision:<input type="text" name="internal_revision"></div>
-  <div>Public Revision:<input type="text" name="public_revision"></div>
-  <div><input type="submit" value="note"></div>
-</form>
+<p>
+{% include "note_equivalence.html" %}
+<p>
+{% include "note_import_migration.html" %}
+<p>
+{% include "note_export_migration.html" %}
 
-<h1>Start Migration:</h1>
-<form action="/api/start_migration?out=html" method="post">
-  <div>Project Name: <input type="text" name="project_name"></div>
-  <input type="radio" name="direction" value="import"> Import
-  <input type="radio" name="direction" value="export"> Export
-  <div>Equivalence Internal Revision:<input type="text" name="equivalence_internal_revision"></div>
-  <div>Equivalence Public Revision:<input type="text" name="equivalence_public_revision"></div>      
-  <div>Base Internal Revision:<input type="text" name="base_internal_revision"></div>
-  <div>Base Public Revision:<input type="text" name="base_public_revision"></div>
-  <div><input type="submit" value="start"></div>
-</form>
+</div>
+</div>
+
 {% endblock body %}

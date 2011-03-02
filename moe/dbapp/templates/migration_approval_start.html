@@ -1,0 +1,14 @@
+{# Copyright 2010 Google Inc. All Rights Reserved. #}
+
+{% comment %}
+  Open tag for a migration-approval form.
+
+  Args:
+    migration: The migration object.
+
+  Author: nicksantos@google.com (Nick Santos)
+{% endcomment %}
+
+<form action="/api/approve_migration?out=html" method="post">
+<input type="hidden"
+      value="{{ migration.migration_id }}" name="migration_id">

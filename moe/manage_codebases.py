@@ -23,6 +23,7 @@ import gflags as flags
 from moe import actions
 from moe import base
 from moe import db_client
+from moe import logic
 from moe import moe_app
 
 FLAGS = flags.FLAGS
@@ -93,12 +94,11 @@ class ManageCodebasesContext(object):
     project: config.MoeProject
   """
 
-  def __init__(self, project, db, internal_revision=-1):
+  def __init__(self, project, internal_revision=-1):
     """Construct.
 
     Args:
-      project: config.MoeProject, the project to use
-      db: db_client.MoeDbClient, the db client to use
+      project: moe_project.MoeProjectContext, the project to use
       internal_revision: str, the internal revision to sync to, or -1 to use
                          HEAD
 
@@ -106,23 +106,11 @@ class ManageCodebasesContext(object):
       Error: if multiple repository URLs are specified in the project.
     """
     self.project = project
-    self._db = db
 
-    print 'Managing Codebases for MOE project', project.name
+    print 'Managing Codebases for MOE project', project.config.name
 
     self._temp_dir = moe_app.RUN.temp_dir
     self._report = moe_app.RUN.report
-    self._expander = moe_app.RUN.expander
-
-    self._internal_repository_config = project.internal_repository
-    (self._internal_repository, self._internal_codebase_creator) = (
-        project.internal_repository.MakeRepository(self._temp_dir,
-                                                   self._expander))
-
-    self._public_repository_config = project.public_repository
-    (self._public_repository, self._public_codebase_creator) = (
-        project.public_repository.MakeRepository(self._temp_dir,
-                                                 self._expander))
 
     # TODO(dbentley): storing this here feels wrong. If there get
     # to be more of these, there should be a ManageCodebasesSetting to hold
@@ -141,12 +129,21 @@ class ManageCodebasesContext(object):
     """
 
     task = moe_app.RUN.ui.BeginImmediateTask(
+        'verify_equivalences',
+        'Verifying Equivalences')
+
+    with task:
+      logic.VerifyEquivalences(self.project.db,
+                               self.project.internal_repository,
+                               self.project.public_repository)
+
+    task = moe_app.RUN.ui.BeginImmediateTask(
         'revisions_since_equivalence',
         'Finding internal revision at equivalence')
     with task:
       (i_r_since_equivalence, internal_candidate_equivalences) = (
-          self._internal_repository.RevisionsSinceEquivalence(
-              current.internal_revision, base.INTERNAL, self._db))
+          self.project.internal_repository.RevisionsSinceEquivalence(
+              current.internal_revision, base.INTERNAL, self.project.db))
       task.SetResult(internal_candidate_equivalences[0].internal_revision)
 
     task = moe_app.RUN.ui.BeginImmediateTask(
@@ -154,8 +151,8 @@ class ManageCodebasesContext(object):
         'Finding public revision at equivalence')
     with task:
       (p_r_since_equivalence, public_candidate_equivalences) = (
-          self._public_repository.RevisionsSinceEquivalence(
-              current.public_revision, base.PUBLIC, self._db))
+          self.project.public_repository.RevisionsSinceEquivalence(
+              current.public_revision, base.PUBLIC, self.project.db))
       task.SetResult(public_candidate_equivalences[0].public_revision)
 
     equivalence = None
@@ -210,8 +207,8 @@ class ManageCodebasesContext(object):
         'noting_revisions',
         'Uploading information about revisions to MOE db')
     with task:
-      self._db.NoteRevisions(revisions_to_export)
-      self._db.NoteRevisions(revisions_to_import)
+      self.project.db.NoteRevisions(revisions_to_export)
+      self.project.db.NoteRevisions(revisions_to_import)
 
     return Book(
         equivalence,
@@ -228,7 +225,7 @@ class ManageCodebasesContext(object):
     """Find all migrations that were submitted in revisions and deal with them.
 
     Revisions that contain the string MOE_MIGRATION= are being migrated. When
-      we see this revision, we shoudl tell the DB that it's finished. We should
+      we see this revision, we should tell the DB that it's finished. We should
       also consider it when trying to find equivalences.
 
     Args:
@@ -240,8 +237,14 @@ class ManageCodebasesContext(object):
     result = []
     for r in revisions:
       if r.migration:
-        self._db.FinishMigration(r.migration, r)
-        migration = self._db.GetMigration(r.migration)
+        self.project.db.FinishMigration(r.migration, r)
+
+        try:
+          # This will fail if a migration has been cancelled.
+          migration = self.project.db.GetMigration(r.migration)
+        except base.Error, e:
+          migration = None
+
         if migration:
           result.append(migration)
     return result
@@ -269,7 +272,7 @@ class ManageCodebasesContext(object):
     last_migration = None
     revisions_to_migrate = []
     for r in revisions_since_equivalence:
-      m = self._db.HasRevisionBeenMigrated(r)
+      m = self.project.db.HasRevisionBeenMigrated(r)
       if m and m.status == base.Migration.SUBMITTED:
         if not m.submitted_as:
           raise base.Error(
@@ -303,7 +306,7 @@ class ManageCodebasesContext(object):
     result.append(actions.EquivalenceCheck(
         book.equivalence.internal_revision,
         book.equivalence.public_revision,
-        self.project,
+        self.project.config,
         actions.EquivalenceCheck.ErrorIfDifferent))
 
     # Next, we check newly-finished migrations.
@@ -311,13 +314,13 @@ class ManageCodebasesContext(object):
     # equivalent.
     for m in book.finished_imports:
       result.append(actions.EquivalenceCheck(
-          m.submitted_as.rev_id, m.up_to_revision.rev_id, self.project,
+          m.submitted_as.rev_id, m.up_to_revision.rev_id, self.project.config,
           actions.EquivalenceCheck.NoteIfSame))
 
     for m in book.finished_exports:
       result.append(actions.EquivalenceCheck(
           # Note the different order of arguments
-          m.up_to_revision.rev_id, m.submitted_as.rev_id, self.project,
+          m.up_to_revision.rev_id, m.submitted_as.rev_id, self.project.config,
           actions.EquivalenceCheck.NoteIfSame))
 
     # At this point, we're just trying to see if we happen to be lucky.
@@ -326,21 +329,22 @@ class ManageCodebasesContext(object):
     result.append(actions.EquivalenceCheck(
         book.current.internal_revision,
         book.current.public_revision,
-        self.project, actions.EquivalenceCheck.NoteAndStopIfSame))
+        self.project.config, actions.EquivalenceCheck.NoteAndStopIfSame))
 
 
     if book.revisions_to_import:
       import_config = actions.MigrationConfig(
           base.Migration.IMPORT,
-          self._public_codebase_creator,
-          self._public_repository_config,
-          self._internal_codebase_creator,
-          self._internal_repository_config,
-          self.project.import_strategy)
+          self.project.public_codebase_creator,
+          self.project.config.public_repository_config,
+          self.project.internal_codebase_creator,
+          self.project.config.internal_repository_config,
+          self.project.internal_repository,
+          self.project.config.import_strategy)
 
       # TODO(dbentley): we can't handle separate revisions from
       # a repository that is a DVCS. We should check this.
-      if self.project.import_strategy.separate_revisions:
+      if self.project.config.import_strategy.separate_revisions:
         num_revisions_to_migrate = 1
       else:
         num_revisions_to_migrate = -1
@@ -354,28 +358,30 @@ class ManageCodebasesContext(object):
         previous_revision = book.last_import.up_to_revision
         applied_against = book.last_import.submitted_as
       else:
-        previous_revision = self._public_repository.MakeRevisionFromId(
+        previous_revision = self.project.public_repository.MakeRevisionFromId(
             book.equivalence.public_revision)
-        applied_against =  self._internal_repository.MakeRevisionFromId(
+        applied_against =  self.project.internal_repository.MakeRevisionFromId(
             book.equivalence.internal_revision)
 
       result.append(actions.Migration(
           previous_revision, applied_against,
           book.revisions_to_import,
-          self.project, import_config, False, num_revisions_to_migrate))
+          self.project.config,
+          import_config, False, num_revisions_to_migrate))
 
     # TODO(dbentley): we should only do one of importing or exporting per run.
     if book.revisions_to_export:
       # Choose exports
       export_config = actions.MigrationConfig(
           base.Migration.EXPORT,
-          self._internal_codebase_creator,
-          self._internal_repository_config,
-          self._public_codebase_creator,
-          self._public_repository_config,
-          self.project.export_strategy)
+          self.project.internal_codebase_creator,
+          self.project.config.internal_repository_config,
+          self.project.public_codebase_creator,
+          self.project.config.public_repository_config,
+          self.project.public_repository,
+          self.project.config.export_strategy)
 
-      if self.project.export_strategy.separate_revisions:
+      if self.project.config.export_strategy.separate_revisions:
         num_revisions_to_migrate = 1
       else:
         num_revisions_to_migrate = -1
@@ -385,15 +391,15 @@ class ManageCodebasesContext(object):
         previous_revision = book.last_export.up_to_revision
         applied_against = book.last_export.submitted_as
       else:
-        previous_revision = self._internal_repository.MakeRevisionFromId(
+        previous_revision = self.project.internal_repository.MakeRevisionFromId(
             book.equivalence.internal_revision)
-        applied_against =  self._public_repository.MakeRevisionFromId(
+        applied_against =  self.project.public_repository.MakeRevisionFromId(
             book.equivalence.public_revision)
 
       result.append(actions.Migration(
           previous_revision, applied_against,
           book.revisions_to_export,
-          self.project, export_config, False, num_revisions_to_migrate))
+          self.project.config, export_config, False, num_revisions_to_migrate))
 
     return result
 
@@ -401,18 +407,28 @@ class ManageCodebasesContext(object):
     """Manage codebases. This is the entry point to the one-button MOE."""
     try:
       if self._internal_revision == -1:
-        task = moe_app.RUN.ui.BeginImmediateTask(
-            'get_internal_head',
-            'Determining current internal revision '
-            '(override with --internal_revision)')
-        with task:
-          current_internal_revision = (
-              self._internal_repository.GetHeadRevision())
-          task.SetResult(current_internal_revision)
+        internal_revision = None
       else:
-        current_internal_revision = str(self._internal_revision)
+        internal_revision = str(self._internal_revision)
 
-      current_public_revision = self._public_repository.GetHeadRevision()
+      task = moe_app.RUN.ui.BeginImmediateTask(
+          'get_internal_head',
+          'Determining current internal revision '
+          '(override with --internal_revision)')
+      with task:
+        current_internal_revision = (
+            self.project.internal_repository.GetHeadRevision(
+                internal_revision))
+        task.SetResult(current_internal_revision)
+
+      task = moe_app.RUN.ui.BeginImmediateTask(
+          'get_public_head',
+          'Determining current public revision')
+      with task:
+        current_public_revision = (self.project.public_repository.
+                                   GetHeadRevision())
+        task.SetResult(current_public_revision)
+
       current = base.Correspondence(current_internal_revision,
                                     current_public_revision)
 
@@ -422,9 +438,10 @@ class ManageCodebasesContext(object):
 
       actionlist = self._ChooseActions(book)
       state = actions.ActionState(
-          self._internal_codebase_creator, self._public_codebase_creator,
+          self.project.internal_codebase_creator,
+          self.project.public_codebase_creator,
           # TODO(dbentley): get rid of report and temp_dir
-          self._report, self._db, self._temp_dir, actionlist)
+          self._report, self.project.db, self._temp_dir, actionlist)
       while actionlist:
         (current_action, state.actions) = (actionlist[0], actionlist[1:])
         result = current_action.Perform(**state.Dict())
@@ -434,7 +451,7 @@ class ManageCodebasesContext(object):
       self._report.PrintSummary()
       self.return_code = self._report.GetReturnCode()
     finally:
-      self._db.Disconnect()
+      self.project.db.Disconnect()
 
 
 def ChooseMigrations(repository, start, end, target,
@@ -466,24 +483,21 @@ def ChooseMigrations(repository, start, end, target,
 
   # TODO(dbentley): we shouldn't just set False.
   return [actions.Migration(
-      start, target, revisions, revisions, migration_config, False,
+      start, target, revisions, project.config, migration_config, False,
       num_revisions_to_migrate)]
 
 
 def main(unused_argv):
-  project, db = db_client.MakeProjectAndDbClient()
+  project = db_client.MakeProjectContext()
   try:
-    moe_app.Init(project.name)
-
     context = ManageCodebasesContext(
         project,
-        db,
         internal_revision=FLAGS.internal_revision)
     context.ManageCodebases()
 
     return context.return_code
   finally:
-    db.Disconnect()
+    project.db.Disconnect()
 
 
 class AutoCmd(appcommands.Cmd):

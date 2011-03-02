@@ -1,0 +1,32 @@
+{# Copyright 2011 Google Inc. All Rights Reserved. #}
+
+{% comment %}
+  Form for noting an imported migration.
+
+  Args:
+    project_name: The name of the project. If not specified, we will ask
+       the user to input a project name.
+
+  Author: nicksantos@google.com (Nick Santos)
+{% endcomment %}
+
+<h2>Note an import:</h2>
+
+<p>Did you have to make a small, temporary change in the public
+codebase that shouldn't be brought back into the internal repository? (e.g.,
+fixing a character that MOE messed up). Tell MOE that it doesn't need to be
+brought back in here. (Though, this will also mean that any change
+before it will not be imported, either).
+<form action="/api/note_migration?out=html" method="post">
+  {% if project_name %}
+    <input type="hidden" value="{{ project_name }}" name="project_name">
+  {% else %}
+    <div>Project Name: <input type="text" name="project_name"></div>
+  {% endif %}
+  <input type="hidden" name="direction" value="import">
+  <div>Brought in public revision
+    <input type="text" name="up_to_revision_id"></div>
+  <div>and submitted it internally as
+    <input type="text" name="submitted_as_id"></div>
+  <div><input type="submit" value="Note this migration"></div>
+</form>

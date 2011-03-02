@@ -62,6 +62,15 @@ class CodebaseUtilsTest(basetest.TestCase):
         foo_creator.CreateInProjectSpace,
         '1001', project_space='baz')
 
+  def testCreateModifiableCopy(self):
+    internal_creator = test_util.StaticCodebaseCreator(
+        {'1001': 'simple_python'})
+
+    codebase = internal_creator.Create('1001')
+    copy = codebase_utils.CreateModifiableCopy(codebase)
+    self.assertFalse(base.AreCodebasesDifferent(codebase, copy))
+    self.assertFalse(codebase.Path() == copy.Path())
+
 
 if __name__ == '__main__':
   basetest.main()
