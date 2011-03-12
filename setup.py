@@ -32,6 +32,7 @@ if sys.version_info < (2, 6):
 
 
 MOE_STUBS = [
+    ('moe', 'RunMoe'),
     ('moe_push_codebase', 'RunPushCodebase'),
     ('moe_manage_codebases', 'RunManageCodebases'),
     ('moe_init_codebases', 'RunInitCodebases'),
