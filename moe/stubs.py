@@ -41,5 +41,5 @@ def RunScrubber():
 
 
 def RunMoe():
-  from moe import moe_app
-  return run_script_module.RunScriptModule(moe_app)
+  from moe import moe_main
+  return run_script_module.RunScriptModule(moe_main)
