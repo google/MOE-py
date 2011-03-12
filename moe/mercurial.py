@@ -19,9 +19,10 @@ from moe import moe_app
 
 
 class MercurialClient(base.CodebaseClient):
-  """Implementation for Subversion-stored codebases."""
+  """Implementation for codebases stored in Mercurial (Hg)."""
 
-  def __init__(self, temp_dir, repository_url, username='', password=''):
+  def __init__(self, temp_dir, repository_url, username='', password='',
+               branch='default'):
     """Create MercurialClient.
 
     Args:
@@ -29,10 +30,12 @@ class MercurialClient(base.CodebaseClient):
       repository_url: url to check out
       username: hg repository username
       password: hg repository password
+      branch: hg named branch
     """
     self.repository_url = repository_url
     self.username = username
     self.password = password
+    self._branch = branch
     self.checked_out = False
 
     # TODO(dbentley): use the code in svn.py:SvnClient.__init__
@@ -55,7 +58,7 @@ class MercurialClient(base.CodebaseClient):
       # in the directory.
       print 'Checking out; you may have to enter username and password'
       self.checked_out = True
-      RunHg(['clone', self.repository_url, 'clone'],
+      RunHg(['clone', '-b', self._branch, self.repository_url, 'clone'],
             cwd=os.path.dirname(self.checkout), unhook_stdout_and_err=True)
       print 'Checked out.'
     else:
@@ -237,10 +240,12 @@ class MercurialEditor(base.CodebaseEditor):
 class MercurialRepository(base.SourceControlRepository):
   """A Mercurial repository."""
 
-  def __init__(self, repository_url, name):
+  def __init__(self, repository_url, name, branch='default'):
     self._url = repository_url
     self._name = name
-    self._client = MercurialClient(moe_app.RUN.temp_dir, repository_url)
+    self._branch = branch
+    self._client = MercurialClient(moe_app.RUN.temp_dir, repository_url,
+                                   username='', password='', branch=branch)
 
   def Export(self, directory, revision=''):
     """Export repository at revision into directory."""
@@ -258,9 +263,9 @@ class MercurialRepository(base.SourceControlRepository):
 
   def GetHeadRevision(self, highest_rev_id=''):
     """Returns the id of the head revision (as a str)."""
-    args = ['log', '-l', '1']
+    args = ['log', '-l', '1', '-b', self._branch]
     if highest_rev_id:
-      args += [ '-r', highest_rev_id ]
+      args += [ '-r', '%s:0' % (highest_rev_id) ]
     try:
       log = self._client.RunHg(args, need_stdout=True)
     except base.CmdError:
@@ -384,28 +389,32 @@ def ParseRevisions(log, repository_name):
 class MercurialRepositoryConfig(base.RepositoryConfig):
   """Config for mercurial repository."""
 
-  def __init__(self, config_json, repository_name=''):
+  def __init__(self, config_json, repository_name='', project_space=''):
     if config_json['type'] != 'mercurial':
       raise base.Error('type %s is not mercurial' % config_json['type'])
     self.url = config_json['url']
     self.username = config_json.get('username')
     self.password = config_json.get('password')
     self.additional_files_re = config_json.get('additional_files_re')
+    self._branch = config_json.get('branch', 'default')
     self._config_json = config_json
     if repository_name:
       self._repository_name = repository_name + '_hg'
     else:
       self._repository_name = ''
+    self._project_space = project_space
 
   def MakeRepository(self, translators=None):
     repository = MercurialRepository(self.url,
-                                     self._repository_name)
+                                     self._repository_name,
+                                     self._branch)
     return (repository,
             codebase_utils.ExportingCodebaseCreator(
                 repository, self.username, self.password,
                 repository_name=self._repository_name,
                 additional_files_re=self.additional_files_re,
-                translators=translators))
+                translators=translators,
+                project_space=self._project_space))
 
   def Serialized(self):
     return self._config_json

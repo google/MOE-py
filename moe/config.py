@@ -169,11 +169,13 @@ def MoeProjectConfigFromJson(config_json, filename=''):
 
   project.internal_repository_config = MakeRepositoryConfig(
       config_json[u'internal_repository'],
-      repository_name=project_name + '_internal')
+      repository_name=project_name + '_internal',
+      project_space=base.INTERNAL_STR)
 
   project.public_repository_config = MakeRepositoryConfig(
       config_json[u'public_repository'],
-      repository_name=project_name + '_public')
+      repository_name=project_name + '_public',
+      project_space=base.PUBLIC_STR)
 
   project.noisy_files_re = config_json.get('noisy_files_re')
   project.moe_db_url = config_json.get('moe_db_url')
@@ -187,6 +189,7 @@ def MoeProjectConfigFromJson(config_json, filename=''):
       config_json.get(u'export_strategy'),
       default_strategy=project.export_strategy)
 
+  project.config_json = config_json
   return project
 
 
@@ -234,12 +237,13 @@ class EmptyRepositoryConfig(base.RepositoryConfig):
     return {'name': 'empty'}
 
 
-def MakeRepositoryConfig(json_config, repository_name=''):
+def MakeRepositoryConfig(json_config, repository_name='', project_space=''):
   """Make the populate repository config from json.
 
   Args:
     json_config: json object
     repository_name: str, the name of the project this repository is in
+    project_space: str
 
   Returns:
     base.RepositoryConfig
@@ -249,13 +253,16 @@ def MakeRepositoryConfig(json_config, repository_name=''):
     return svn.SvnRepositoryConfig(json_config,
                                    username=FLAGS.public_username,
                                    password=FLAGS.public_password,
-                                   repository_name=repository_name)
+                                   repository_name=repository_name,
+                                   project_space=project_space)
   if repository_type == 'mercurial':
     return mercurial.MercurialRepositoryConfig(json_config,
-                                               repository_name=repository_name)
+                                               repository_name=repository_name,
+                                               project_space=project_space)
   if repository_type == 'git':
     return git.GitRepositoryConfig(json_config,
-                                   repository_name=repository_name)
+                                   repository_name=repository_name,
+                                   project_space=project_space)
   raise base.Error('unknown repository type: %s' % repository_type)
 
 

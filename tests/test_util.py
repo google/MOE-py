@@ -274,12 +274,12 @@ def MockOutMakeRepositoryConfig(repository_configs=None):
 
   if repository_configs:
     def MakeMockRepositoryConfig(json_config, repository_name='',
-                                 translators=None):
+                                 translators=None, project_space=''):
       repository, cc = repository_configs[repository_name]
       return MockRepositoryConfig(repository_name, repository, cc)
   else:
     def MakeMockRepositoryConfig(json_config, repository_name='',
-                                 translators=None):
+                                 translators=None, project_space=''):
       return MockRepositoryConfig(repository_name)
   config.MakeRepositoryConfig = MakeMockRepositoryConfig
 

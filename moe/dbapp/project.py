@@ -152,8 +152,9 @@ def FindEquivalencesList(project,
     q.filter('internal_revision_obj IN ', internal_revisions)
   if public_revisions:
     q.filter('public_revision_obj IN ', public_revisions)
-  return [e for e in q.fetch(1000)
-          if not e.verification_status == models.VERIFICATION_INVALID]
+  result = [e for e in q.fetch(1000)
+            if not e.verification_status == models.VERIFICATION_INVALID]
+  return result
 
 
 def GetRevisionFromRequest(request, project, param_name, repository=None):
@@ -243,7 +244,8 @@ def LookupMigrationByRevision(up_to_revision):
 def LookupMigrationsByRevisions(project, revisions):
   q = (QueryProject(models.Migration, project)
        .filter('up_to_revision IN', revisions))
-  return list(q.fetch(1000))
+  result = list(q.fetch(len(revisions)))
+  return result
 
 
 def LookupMigrationByMigrationId(migration_id):

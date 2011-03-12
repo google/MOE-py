@@ -458,7 +458,7 @@ def ParseRevisions(log, repository_name):
 class GitRepositoryConfig(base.RepositoryConfig):
   """Config for git repository."""
 
-  def __init__(self, config_json, repository_name=''):
+  def __init__(self, config_json, repository_name='', project_space=''):
     if config_json['type'] != 'git':
       raise base.Error('type %s is not git' % config_json['type'])
     self.url = config_json['url']
@@ -471,6 +471,7 @@ class GitRepositoryConfig(base.RepositoryConfig):
       self._repository_name = repository_name + '_git'
     else:
       self._repository_name = ''
+    self._project_space = project_space
 
   def MakeRepository(self, translators=None):
     repository = GitRepository(self.url,
@@ -482,7 +483,8 @@ class GitRepositoryConfig(base.RepositoryConfig):
                 repository,
                 repository_name=self._repository_name,
                 additional_files_re=self.additional_files_re,
-                translators=translators))
+                translators=translators,
+                project_space=self._project_space))
 
   def Serialized(self):
     return self._config_json

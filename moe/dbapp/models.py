@@ -5,6 +5,8 @@ from google.appengine.ext import db
 
 import datetime
 
+import cache
+
 
 def _ModelToDictForJson(model_obj):
   """Return the data of an app engine model as a dict.
@@ -27,7 +29,7 @@ def _ModelToDictForJson(model_obj):
     result[key] = value
   return result
 
-class Repository(db.Model):
+class Repository(cache.CacheInvalidatingModel):
   name = db.StringProperty()
   parent_repository = db.StringProperty()
 
@@ -35,7 +37,7 @@ class Repository(db.Model):
     return {'name': self.name}
 
 
-class Project(db.Model):
+class Project(cache.CacheInvalidatingModel):
   name = db.StringProperty(required=True)
   config = db.BlobProperty()
   highest_equivalence = db.IntegerProperty(default=0)
@@ -53,7 +55,7 @@ PROCESS_TIMEOUT = datetime.timedelta(minutes=20)
 TIME_FORMAT = '%X %x'
 
 
-class Process(db.Model):
+class Process(cache.CacheInvalidatingModel):
   project = db.ReferenceProperty(Project, required=True)
   process_id = db.StringProperty(required=True)
   running = db.BooleanProperty(required=True)
@@ -125,7 +127,7 @@ VERIFICATION_NAMES = ['Unverified', 'Verified', 'Invalid']
 INTERNAL=0
 PUBLIC=1
 
-class Revision(db.Model):
+class Revision(cache.CacheInvalidatingModel):
   repository_name = db.StringProperty()
   rev_id = db.StringProperty()
   author = db.StringProperty()
@@ -143,12 +145,15 @@ class Revision(db.Model):
     return data
 
 
-class Equivalence(db.Model):
-  project = db.ReferenceProperty(Project, required=True)
-  internal_revision_obj = db.ReferenceProperty(
-      Revision, collection_name='internal_set')
-  public_revision_obj = db.ReferenceProperty(
-      Revision, collection_name='public_set')
+class Equivalence(cache.CacheInvalidatingModel):
+  project_hidden = db.ReferenceProperty(Project, required=True, name='project')
+  project = cache.CachingProperty('project_hidden')
+  internal_revision_obj_hidden = db.ReferenceProperty(
+      Revision, collection_name='internal_set', name='internal_revision_obj')
+  internal_revision_obj = cache.CachingProperty('internal_revision_obj_hidden')
+  public_revision_obj_hidden = db.ReferenceProperty(
+      Revision, collection_name='public_set', name='public_revision_obj')
+  public_revision_obj = cache.CachingProperty('public_revision_obj_hidden')
   verification_status = db.IntegerProperty(default=VERIFICATION_UNVERIFIED)
 
   # Old code
@@ -165,15 +170,20 @@ class Equivalence(db.Model):
     return data
 
 
-class Migration(db.Model):
-  project = db.ReferenceProperty(Project, required=True)
+class Migration(cache.CacheInvalidatingModel):
+  project_hidden = db.ReferenceProperty(Project, required=True, name='project')
+  project = cache.CachingProperty('project_hidden')
   direction = db.IntegerProperty(required=True, choices=DIRECTION_VALUES)
-  up_to_revision = db.ReferenceProperty(Revision,
-                                        collection_name='up_to_set')
+  up_to_revision_hidden = db.ReferenceProperty(
+      Revision,
+      collection_name='up_to_set', name='up_to_revision')
+  up_to_revision = cache.CachingProperty('up_to_revision_hidden')
   status = db.IntegerProperty(required=True, choices=STATUS_VALUES)
-  submitted_as = db.ReferenceProperty(Revision,
-                                      collection_name='submitted_as_set')
-  # TODO(dbentley): should there be applied_against
+  submitted_as_hidden = db.ReferenceProperty(
+      Revision,
+      collection_name='submitted_as_set', name='submitted_as')
+  submitted_as = cache.CachingProperty('submitted_as_hidden',
+                                       include_setter=True)
 
   # Extra metadata that is handy
   migration_id = db.IntegerProperty()
@@ -181,6 +191,13 @@ class Migration(db.Model):
   diff = db.TextProperty()
   link = db.LinkProperty()
   last_seen = db.DateTimeProperty(auto_now=True)
+
+  # We don't cache this because:
+  #   a) caching a list is different, and I don't want to implement
+  #      a new function.
+  #   b) we can just db.get() the list of keys.
+  #   c) the list is already keys, so app engine's magic hasn't
+  #      pervaded thus far.
   migrated_revisions = db.ListProperty(db.Key, default=None)
 
   # For backwards compatibility
@@ -237,14 +254,14 @@ class Migration(db.Model):
           'changelog': self.changelog,
           'diff' : self.diff,
           'link' : self.link,
-          'revisions': [Revision.get(key).DictForJson()
-                        for key in self.migrated_revisions],
+          'revisions': [r.DictForJson()
+                        for r in db.get(self.migrated_revisions)],
           })
 
     return data
 
 
-class Comment(db.Model):
+class Comment(cache.CacheInvalidatingModel):
   comment_id = db.IntegerProperty()
 
   # The migration that this comment is associated with.
@@ -273,7 +290,7 @@ class Comment(db.Model):
     }
 
 
-class Counter(db.Model):
+class Counter(cache.CacheInvalidatingModel):
   counter = db.IntegerProperty(default=0)
 
 

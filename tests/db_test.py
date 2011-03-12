@@ -133,8 +133,8 @@ class MoeDbTest(basetest.TestCase):
         'createProject')
     self.assertTrue(isinstance(stored_project, config.MoeProjectConfig),
                     str(stored_project))
-    self.assertMultiLineEqual(str(stored_project.Serialized()),
-                              str(project.Serialized()))
+    self.assertEqual(simplejson.loads(stored_project.Serialized()),
+                     simplejson.loads(project.Serialized()))
 
   def testGetNonexistentProject(self):
     stored_project = db_client.GetStoredProject(

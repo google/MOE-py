@@ -59,4 +59,5 @@ setup(
     author = 'Google Inc.',
     author_email='opensource@google.com',
     url='http://code.google.com/p/google-moe',
+    zip_safe=False,
     )

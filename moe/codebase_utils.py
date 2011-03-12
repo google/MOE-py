@@ -28,17 +28,21 @@ class Codebase(object):
 
   def __init__(self, path, expander=None, client_creator=None,
                additional_files_re=None, expanded_path=None,
+               metadata=None, rev_id='',
                project_space=base.PUBLIC_STR):
     """Construct.
 
     Args:
       path: str, the path to the codebase
-      expander: CodebaseExpander, an expander to use
+      expander: CodebaseExpander, an expander to use (DEPRECATED)
       client_creator: function -> CodebaseClient, a way to get
                       a client to modify this codebase
       additional_files_re: str, a regular expression describing files that are
                            extra in this codebase, and should not be Walk'ed
       expanded_path: str, path to an expanded version of this codebase
+      metadata: object, metadata that the Codebase Creator can embed for
+                usage by the creator
+      rev_id: str, the id of the revision this Codebase is created at
       project_space: str, which project space this Codebase is in
     """
     self._path = path
@@ -46,6 +50,8 @@ class Codebase(object):
     self._client_creator = client_creator
     self._additional_files_re = (additional_files_re and
                                  re.compile(additional_files_re))
+    self._metadata = metadata
+    self._rev_id = rev_id
     self._project_space = project_space
 
   def ProjectSpace(self):
@@ -108,6 +114,14 @@ class Codebase(object):
       self._expanded_path = moe_app.RUN.expander._PossiblyExpandCodebase(
           self._path)
     return self._expanded_path
+
+  def Metadata(self):
+    """Return the metadata of this Codebase."""
+    return self._metadata
+
+  def RevId(self):
+    """Return the id of the revision this Codebase was created at, a str."""
+    return self._rev_id
 
   def MakeEditor(self, migration_strategy, revisions=None):
     return self._client_creator().MakeEditor(migration_strategy, revisions)
@@ -226,6 +240,7 @@ class ExportingCodebaseCreator(CodebaseCreator):
 
       result = Codebase(path, None, client_creator=client_creator,
                         additional_files_re=self._additional_files_re,
+                        rev_id=revision,
                         project_space=self._project_space)
       return result
 

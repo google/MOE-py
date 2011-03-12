@@ -514,7 +514,8 @@ def ParseRevisions(text, repository_name):
 class SvnRepositoryConfig(base.RepositoryConfig):
   """Configuration for a repository that lives in Subversion."""
 
-  def __init__(self, config_json, username='', password='', repository_name=''):
+  def __init__(self, config_json, username='', password='', repository_name='',
+               project_space=''):
     if config_json['type'] != 'svn':
       raise base.Error('type %s is not svn' % config_json['type'])
     self.url = config_json['url']
@@ -526,6 +527,7 @@ class SvnRepositoryConfig(base.RepositoryConfig):
       self._repository_name = repository_name + '_svn'
     else:
       self._repository_name = ''
+    self._project_space = project_space
 
   def MakeRepository(self, translators=None):
     repository = SvnRepository(self.url, self._repository_name)
@@ -534,7 +536,8 @@ class SvnRepositoryConfig(base.RepositoryConfig):
                 repository, self.username, self.password,
                 repository_name=self._repository_name,
                 additional_files_re=self.additional_files_re,
-                translators=translators))
+                translators=translators,
+                project_space=self._project_space))
 
   def Serialized(self):
     return self._config_json

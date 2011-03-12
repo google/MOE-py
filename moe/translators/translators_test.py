@@ -12,7 +12,7 @@ from moe import base
 from moe import codebase_utils
 from moe import moe_app
 import test_util
-from moe import translators
+from moe.translators import translators
 
 
 def setUp():
