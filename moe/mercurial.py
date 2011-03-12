@@ -315,6 +315,10 @@ class MercurialRepository(base.SourceControlRepository):
     return base.Revision(rev_id=id, repository_name=self._name)
 
 
+_HG_BINARY = base.FindBinaryOnPath('hg',
+                                   base.EnvironPath() + ['/usr/local/bin'])
+
+
 def RunHg(args, **kwargs):
   """Run an hg command.
 
@@ -328,7 +332,10 @@ def RunHg(args, **kwargs):
   Raises:
     base.Error: if Hg returns non-zero.
   """
-  return base.RunCmd('hg', args, **kwargs)
+  if not _HG_BINARY:
+    raise base.Error(
+        "Can't find hg; try downloading from source; make install")
+  return base.RunCmd(_HG_BINARY, args, **kwargs)
 
 
 CHANGESET_RE = re.compile('^changeset:\s*(\d+):([0-9a-f]+)$')

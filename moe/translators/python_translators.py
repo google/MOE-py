@@ -2,26 +2,14 @@
 #
 # Copyright 2011 Google Inc. All Rights Reserved.
 
-"""Tools to translate codebases in one project space into another.
+"""Tools to translate python repositories."""
 
-A central concept of MOE is the Project Space. One project leads different lives
-in different repositories. (E.g., it needs a Makefile in the public project,
-and a different type of build file internally.) Translators let us take a
-codebase in the internal project space and generate a codebase in the public
-project space.
 
-"""
-
-__author__ = 'jwall@google.com (Jeremy Wall)'
 
 
 import os
 import re
 import tempfile
-
-import json as simplejson
-
-from google.apputils import resources
 
 from moe import base
 from moe import codebase_utils
@@ -34,23 +22,6 @@ import sys
 from lib2to3.main import main
 
 sys.exit(main("lib2to3.fixes"))"""
-
-
-WS_BINARY = """#!/usr/bin/env python
-import re
-import sys
-
-def main(argv):
-    fname = argv[1]
-    with open(fname) as f:
-        data = f.read()
-    data = re.sub('\\n{3,}', '\n\n', data)
-    with open(fname, 'w') as f:
-        f.write(data)
-
-if __name__ == '__main__':
-    main(sys.argv)
-"""
 
 
 class TwoToThreeTranslator(translators.Translator):
@@ -74,23 +45,24 @@ class TwoToThreeTranslator(translators.Translator):
     os.close(output_bin_fd)
     base.SetExecutable(output_bin_filename)
     task = moe_app.RUN.ui.BeginImmediateTask(
-      'translate',
-      'Translating from %s project space to %s (using python 2to3)' %
-      (self._from_project_space, self._to_project_space))
+        'translate',
+        'Translating from %s project space to %s (using python 2to3)' %
+        (self._from_project_space, self._to_project_space))
 
     with task:
-        modified_codebase = codebase_utils.CreateModifiableCopy(codebase)
-        base.RunCmd(output_bin_filename, ['--write', '--nobackups', '--verbose',
-                                          modified_codebase.Path()])
-        for fname in modified_codebase.Walk():
-            modified_file = modified_codebase.FilePath(fname)
-            with open(fname) as f:
-                data = f.read()
-            data = re.sub('\\n{3,}', '\n\n', data)
-            with open(fname, 'w') as f:
-                f.write(data)
-        os.remove(output_bin_filename)
-        return modified_codebase
+      modified_codebase = codebase_utils.CreateModifiableCopy(codebase)
+      base.RunCmd(output_bin_filename, ['--write', '--nobackups', '--verbose',
+                                        modified_codebase.Path()])
+      for fname in modified_codebase.Walk():
+        modified_file = modified_codebase.FilePath(fname)
+        with open(modified_file) as f:
+          data = f.read()
+          data = re.sub('\\n{3,}', '\n\n', data)
+          with open(fname, 'w') as f:
+            f.write(data)
+      os.remove(output_bin_filename)
+      return modified_codebase
+
 
 class ThreeToTwoTranslator(translators.Translator):
   """A translator that invokes the MOE scrubber to translate."""
@@ -108,19 +80,19 @@ class ThreeToTwoTranslator(translators.Translator):
 
   def Translate(self, codebase):
     task = moe_app.RUN.ui.BeginImmediateTask(
-      'translate',
-      'Translating from %s project space to %s (using python 3to2)' %
-      (self._from_project_space, self._to_project_space))
+        'translate',
+        'Translating from %s project space to %s (using python 3to2)' %
+        (self._from_project_space, self._to_project_space))
 
     with task:
-        modified_codebase = codebase_utils.CreateModifiableCopy(codebase)
-        base.RunCmd('3to2', ['--write', '--nobackups',
-                                          modified_codebase.Path()])
-        for fname in modified_codebase.Walk():
-            modified_file = modified_codebase.FilePath(fname)
-            with open(fname) as f:
-                data = f.read()
-            data = re.sub('\\n{3,}', '\n\n', data)
-            with open(fname, 'w') as f:
-                f.write(data)
-        return modified_codebase
+      modified_codebase = codebase_utils.CreateModifiableCopy(codebase)
+      base.RunCmd('3to2', ['--write', '--nobackups',
+                           modified_codebase.Path()])
+      for fname in modified_codebase.Walk():
+        modified_file = modified_codebase.FilePath(fname)
+        with open(modified_file) as f:
+          data = f.read()
+          data = re.sub('\\n{3,}', '\n\n', data)
+          with open(fname, 'w') as f:
+            f.write(data)
+      return modified_codebase

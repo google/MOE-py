@@ -146,7 +146,9 @@ class EquivalenceCheck(Action):
         ('Checking for an Equivalence between internal revision %s and '
          'public revision %s') % (self.internal_revision, self.public_revision))
     with task:
-      generated = internal_codebase_creator.Create(self.internal_revision)
+      generated = internal_codebase_creator.CreateInProjectSpace(
+          self.internal_revision,
+          base.PUBLIC_STR)
       public = public_codebase_creator.Create(self.public_revision)
       codebases_differ = None
       if not self.project.manual_equivalence_deltas:

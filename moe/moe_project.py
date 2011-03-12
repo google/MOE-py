@@ -9,8 +9,8 @@ __author__ = 'dbentley@google.com (Daniel Bentley)'
 
 from moe import base
 from moe import config_utils
-from moe.translators import translators
 from moe.translators import python_translators
+from moe.translators import translators
 from moe.translators import undo_scrubbing_translator
 
 

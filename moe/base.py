@@ -281,6 +281,28 @@ def SetExecutable(path):
   os.chmod(path,mode)
 
 
+def FindBinaryOnPath(binary_name, path):
+  """Find a binary on a path, a la which(1).
+
+  Args:
+    binary_name: str, the (relative) name of the binary to invoke
+    path: list of str, the path to resolve against
+
+  Returns:
+    str
+  """
+  for p in path:
+    potential = os.path.join(p, binary_name)
+    if IsExecutable(potential):
+      return potential
+  return ''
+
+
+def EnvironPath():
+  """Return, as list of str, the path from the environment."""
+  return ':'.split(os.environ.get('PATH', ''))
+
+
 class MoeReport(object):
   """A report for a run of a MOE tool.
 
