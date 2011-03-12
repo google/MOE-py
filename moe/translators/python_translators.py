@@ -16,6 +16,7 @@ __author__ = 'jwall@google.com (Jeremy Wall)'
 
 
 import os
+import re
 import tempfile
 
 import json as simplejson
@@ -33,6 +34,24 @@ import sys
 from lib2to3.main import main
 
 sys.exit(main("lib2to3.fixes"))"""
+
+
+WS_BINARY = """#!/usr/bin/env python
+import re
+import sys
+
+def main(argv):
+    fname = argv[1]
+    with open(fname) as f:
+        data = f.read()
+    data = re.sub('\\n{3,}', '\n\n', data)
+    with open(fname, 'w') as f:
+        f.write(data)
+
+if __name__ == '__main__':
+    main(sys.argv)
+"""
+
 
 class TwoToThreeTranslator(translators.Translator):
   """A translator that invokes the MOE scrubber to translate."""
@@ -63,6 +82,13 @@ class TwoToThreeTranslator(translators.Translator):
         modified_codebase = codebase_utils.CreateModifiableCopy(codebase)
         base.RunCmd(output_bin_filename, ['--write', '--nobackups', '--verbose',
                                           modified_codebase.Path()])
+        for fname in modified_codebase.Walk():
+            modified_file = modified_codebase.FilePath(fname)
+            with open(fname) as f:
+                data = f.read()
+            data = re.sub('\\n{3,}', '\n\n', data)
+            with open(fname, 'w') as f:
+                f.write(data)
         os.remove(output_bin_filename)
         return modified_codebase
 
@@ -90,4 +116,11 @@ class ThreeToTwoTranslator(translators.Translator):
         modified_codebase = codebase_utils.CreateModifiableCopy(codebase)
         base.RunCmd('3to2', ['--write', '--nobackups',
                                           modified_codebase.Path()])
+        for fname in modified_codebase.Walk():
+            modified_file = modified_codebase.FilePath(fname)
+            with open(fname) as f:
+                data = f.read()
+            data = re.sub('\\n{3,}', '\n\n', data)
+            with open(fname, 'w') as f:
+                f.write(data)
         return modified_codebase
