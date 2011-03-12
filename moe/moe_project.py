@@ -10,6 +10,7 @@ __author__ = 'dbentley@google.com (Daniel Bentley)'
 from moe import base
 from moe import config_utils
 from moe.translators import translators
+from moe.translators import python_translators
 from moe.translators import undo_scrubbing_translator
 
 
@@ -74,6 +75,20 @@ def MakeTranslators(translators_config, project):
           config_json.get('from_project_space'),
           config_json.get('to_project_space'),
           config_json.get('scrubber_config')))
+      continue
+    if type_arg == u'python_2to3':
+      config_utils.CheckJsonKeys('translator_config', config_json,
+                                 _TRANSLATOR_CONFIG_KEYS)
+      result.append(python_translators.TwoToThreeTranslator(
+          config_json.get('from_project_space'),
+          config_json.get('to_project_space')))
+      continue
+    if type_arg == u'python_3to2':
+      config_utils.CheckJsonKeys('translator_config', config_json,
+                                 _TRANSLATOR_CONFIG_KEYS)
+      result.append(python_translators.ThreeToTwoTranslator(
+          config_json.get('from_project_space'),
+          config_json.get('to_project_space')))
       continue
     if type_arg == u'identity':
       config_utils.CheckJsonKeys('translator_config', config_json,
