@@ -33,10 +33,10 @@ from moe import push_codebase
 FLAGS = flags.FLAGS
 
 def DefineFlags(flag_values):
-  flags.DEFINE_integer('internal_revision', -1,
-                       'The internal revision to sync to. Should be the most '
-                       'recent green revision.',
-                       flag_values=flag_values)
+  flags.DEFINE_string('internal_revision', '',
+                      'The internal revision to sync to. Should be the most '
+                      'recent green revision.',
+                      flag_values=flag_values)
   flags.DEFINE_string('public_revision', '',
                       'The public revision in equivalence with the given '
                       'internal revision',
@@ -159,13 +159,13 @@ def main(unused_argv):
 
   try:
     internal_revision = FLAGS.internal_revision
-    if internal_revision <= 0:
+    if not internal_revision:
       raise app.UsageError('Must supply a revision using --internal_revision '
                            'flag.')
     public_revision = FLAGS.public_revision
     context = InitCodebasesContext(
         project,
-        str(internal_revision), public_revision)
+        internal_revision, public_revision)
     context.InitializeProject()
     moe_app.RUN.report.PrintSummary()
   finally:
