@@ -204,6 +204,7 @@ class ExportingCodebaseCreator(CodebaseCreator):
         moe_app.RUN.temp_dir, repository_username, repository_password)
     self._additional_files_re = additional_files_re
     self._repository_name = repository_name
+    self._project_space = project_space
 
   def Create(self, revision):
     """Export a revision of this codebase to the filesystem.
@@ -220,7 +221,9 @@ class ExportingCodebaseCreator(CodebaseCreator):
     with task:
       is_head = not revision
       path = os.path.join(
-          moe_app.RUN.temp_dir, 'public_export', str(revision) or 'head')
+          moe_app.RUN.temp_dir,
+          '%s_export' % self._project_space,
+          str(revision) or 'head')
 
       if is_head:
         # TODO(dbentley): remove the existing path
