@@ -22,7 +22,7 @@ class MercurialClient(base.CodebaseClient):
   """Implementation for codebases stored in Mercurial (Hg)."""
 
   def __init__(self, temp_dir, repository_url, username='', password='',
-               branch='default'):
+               branch='default', revision=''):
     """Create MercurialClient.
 
     Args:
@@ -36,6 +36,7 @@ class MercurialClient(base.CodebaseClient):
     self.username = username
     self.password = password
     self._branch = branch
+    self._revision = revision
     self.checked_out = False
 
     # TODO(dbentley): use the code in svn.py:SvnClient.__init__
@@ -58,8 +59,13 @@ class MercurialClient(base.CodebaseClient):
       # in the directory.
       print 'Checking out; you may have to enter username and password'
       self.checked_out = True
-      RunHg(['clone', '-b', self._branch, self.repository_url, 'clone'],
-            cwd=os.path.dirname(self.checkout), unhook_stdout_and_err=True)
+      if self._revision:
+        RunHg(['clone', self.repository_url, 'clone'],
+              cwd=os.path.dirname(self.checkout), unhook_stdout_and_err=True)
+        self.RunHg(['checkout', self._revision])
+      else:
+        RunHg(['clone', '-b', self._branch, self.repository_url, 'clone'],
+              cwd=os.path.dirname(self.checkout), unhook_stdout_and_err=True)
       print 'Checked out.'
     else:
       # TODO(user): update hg client here
@@ -270,6 +276,8 @@ class MercurialRepository(base.SourceControlRepository):
     self._url = repository_url
     self._name = name
     self._branch = branch
+    self._username = username
+    self._password = password
     self._client = MercurialClient(moe_app.RUN.temp_dir, repository_url,
                                    username=username, password=password,
                                    branch=branch)
@@ -284,10 +292,12 @@ class MercurialRepository(base.SourceControlRepository):
     self._client.RunHg(args)
     os.remove(os.path.join(directory, '.hg_archival.txt'))
 
-  def MakeClient(self, directory, username='', password=''):
+  def MakeClient(self, directory, username='', password='', revision=''):
     """Make a client for editing this codebase."""
     # TODO(user): rethink creation of client in constructor
-    return self._client
+    return MercurialClient(moe_app.RUN.temp_dir, self._url,
+                           username=self._username, password=self._password,
+                           branch=self._branch, revision=revision)
 
   def GetHeadRevision(self, highest_rev_id=''):
     """Returns the id of the head revision (as a str)."""
