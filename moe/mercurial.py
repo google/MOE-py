@@ -195,19 +195,34 @@ class MercurialEditor(base.CodebaseEditor):
       str, the commit id if a commit was made, the recent revision id if
            an attempted commit was a no-op, or None if no commit was attempted
     """
+
+    def Heads():
+      return filter(None,
+                    self.RunHg(['heads', '--template', '{node|short}\n'],
+                               need_stdout=True).split('\n'))
+
+    starting_heads = Heads()
     if self.commit_strategy == base.LEAVE_PENDING:
       return None
     hg_args = ['commit', '-m', self._commit_message]
     if self.client.username:
       hg_args += ['--user', self.client.username]
     self.RunHg(hg_args)
+    current_heads = Heads()
+    revision = self.RunHg(['log', '-l', '1' , '--template', '{node|short}'],
+                     need_stdout=True)
+    if len(current_heads) == 2 and len(starting_heads) == 1:
+      try:
+        self.RunHg(['merge'], env={'HGMERGE': 'false'})
+        self.RunHg(['commit', '-m', 'Automated merge.'])
+      except base.CmdError, e:
+        # TODO(augie): print an error here
+        self.RunHg(['update', '--clean', '-r', 'tip'])
     if self.commit_strategy == base.COMMIT_REMOTELY:
       task = moe_app.RUN.ui.BeginIntermediateTask(
           'push_changes', 'Pushing changes remotely (may require auth)')
       with task:
         self.RunHg(['push'], unhook_stdout_and_err=True)
-    revision = self.RunHg(['log', '-l', '1' , '--template', '{node|short}'],
-                     need_stdout=True)
     return revision.strip()
 
   def Diff(self):
