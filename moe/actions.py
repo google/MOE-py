@@ -147,7 +147,7 @@ class EquivalenceCheck(Action):
          'public revision %s') % (self.internal_revision, self.public_revision))
     with task:
       generated = internal_codebase_creator.CreateInProjectSpace(
-          self.internal_revision,
+        self.internal_revision,
           base.PUBLIC_STR)
       public = public_codebase_creator.Create(self.public_revision)
       codebases_differ = None
@@ -457,15 +457,17 @@ class Migration(Action):
           r = self.migration_config.target_repository.MakeRevisionFromId(
               commit_id)
           db.FinishMigration(migration_id, r)
-          # TODO(dbentley): need to make this work for import.
-          # It doesn't because we always pass in the migrated revisions
-          # as an internal revision. We should look in the config, and vary the
-          # order.
+          if self.migration_config.direction == base.Migration.EXPORT:
+            internal_rev = migration_revisions[-1].rev_id
+            public_rev = commit_id
+          elif self.migration_config.direction == base.Migration.IMPORT:
+            internal_rev = commit_id
+            public_rev = migration_revisions[-1].rev_id
           equivalence_check = EquivalenceCheck(
-              migration_revisions[-1].rev_id, commit_id, self.project,
+            internal_rev, public_rev, self.project,
               EquivalenceCheck.NoteIfSame)
           update = StateUpdate(actions=[equivalence_check] +
-                               result_migration_list)
+                               result_migration_list + actions)
           return update
         else:
           moe_app.RUN.ui.Info('%s ready for human intervention' %
