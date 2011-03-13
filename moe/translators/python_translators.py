@@ -58,7 +58,7 @@ class TwoToThreeTranslator(translators.Translator):
         with open(modified_file) as f:
           data = f.read()
           data = re.sub('\\n{3,}', '\n\n', data)
-          with open(fname, 'w') as f:
+          with open(modified_file, 'w') as f:
             f.write(data)
       os.remove(output_bin_filename)
       return modified_codebase
@@ -93,6 +93,6 @@ class ThreeToTwoTranslator(translators.Translator):
         with open(modified_file) as f:
           data = f.read()
           data = re.sub('\\n{3,}', '\n\n', data)
-          with open(fname, 'w') as f:
+          with open(modified_file, 'w') as f:
             f.write(data)
       return modified_codebase
