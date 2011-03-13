@@ -199,7 +199,7 @@ class MercurialEditor(base.CodebaseEditor):
       return None
     hg_args = ['commit', '-m', self._commit_message]
     if self.client.username:
-      hg_args += ['u', self.client.username]
+      hg_args += ['--user', self.client.username]
     self.RunHg(hg_args)
     if self.commit_strategy == base.COMMIT_REMOTELY:
       task = moe_app.RUN.ui.BeginIntermediateTask(
