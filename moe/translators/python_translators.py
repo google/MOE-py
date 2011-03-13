@@ -23,11 +23,10 @@ from lib2to3.main import main
 
 sys.exit(main("lib2to3.fixes"))"""
 
+class BasePythonTranslator(translators.Translator):
+    """The base class for the the MOE Python translators"""
 
-class TwoToThreeTranslator(translators.Translator):
-  """A translator that invokes the MOE scrubber to translate."""
-
-  def __init__(self, from_project_space, to_project_space):
+    def __init__(self, from_project_space, to_project_space):
     translators.Translator.__init__(self)
     self._from_project_space = from_project_space
     self._to_project_space = to_project_space
@@ -37,6 +36,19 @@ class TwoToThreeTranslator(translators.Translator):
 
   def ToProjectSpace(self):
     return self._to_project_space
+
+  def _WhitespaceScrubber(self, modified_codebase):
+    for fname in modified_codebase.Walk():
+      modified_file = modified_codebase.FilePath(fname)
+      with open(modified_file) as f:
+        data = f.read()
+        data = re.sub('\\n{3,}', '\n\n', data)
+        with open(fname, 'w') as f:
+          f.write(data)
+
+
+class TwoToThreeTranslator(BasePythonTranslator):
+  """A translator that invokes pythons 2to3 to translate."""
 
   def Translate(self, codebase):
     (output_bin_fd, output_bin_filename) = tempfile.mkstemp(
@@ -51,32 +63,15 @@ class TwoToThreeTranslator(translators.Translator):
 
     with task:
       modified_codebase = codebase_utils.CreateModifiableCopy(codebase)
-      base.RunCmd(output_bin_filename, ['--write', '--nobackups', '--verbose',
+      base.RunCmd(output_bin_filename, ['--write', '--nobackups',
                                         modified_codebase.Path()])
-      for fname in modified_codebase.Walk():
-        modified_file = modified_codebase.FilePath(fname)
-        with open(modified_file) as f:
-          data = f.read()
-          data = re.sub('\\n{3,}', '\n\n', data)
-          with open(modified_file, 'w') as f:
-            f.write(data)
+      self._WhitespaceScrubber(modified_codebase)
       os.remove(output_bin_filename)
       return modified_codebase
 
 
 class ThreeToTwoTranslator(translators.Translator):
-  """A translator that invokes the MOE scrubber to translate."""
-
-  def __init__(self, from_project_space, to_project_space):
-    translators.Translator.__init__(self)
-    self._from_project_space = from_project_space
-    self._to_project_space = to_project_space
-
-  def FromProjectSpace(self):
-    return self._from_project_space
-
-  def ToProjectSpace(self):
-    return self._to_project_space
+  """A translator that invokes pythons 3to2 to translate."""
 
   def Translate(self, codebase):
     task = moe_app.RUN.ui.BeginImmediateTask(
@@ -88,11 +83,5 @@ class ThreeToTwoTranslator(translators.Translator):
       modified_codebase = codebase_utils.CreateModifiableCopy(codebase)
       base.RunCmd('3to2', ['--write', '--nobackups',
                            modified_codebase.Path()])
-      for fname in modified_codebase.Walk():
-        modified_file = modified_codebase.FilePath(fname)
-        with open(modified_file) as f:
-          data = f.read()
-          data = re.sub('\\n{3,}', '\n\n', data)
-          with open(modified_file, 'w') as f:
-            f.write(data)
+      self._WhitespaceScrubber(modified_codebase)
       return modified_codebase
