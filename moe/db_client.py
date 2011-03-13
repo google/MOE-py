@@ -535,7 +535,9 @@ class ServerBackedMoeDbClient(MoeDbClient):
     Returns:
       base.Migration
     """
-    return base.Migration(**self.MigrationInfo(migration_id, abbreviated))
+    return base.Migration(
+      **dict((str(k), v) for k, v in
+             self.MigrationInfo(migration_id, abbreviated).iteritems()))
 
   def FindMigration(self, up_to_revision, abbreviated=True):
     """Get one migration from the database.
@@ -552,6 +554,7 @@ class ServerBackedMoeDbClient(MoeDbClient):
                           simplejson.dumps(up_to_revision.Dump()),
                         'abbreviated': abbreviated})
     if result:
+      result = dict((str(k), v) for k, v in result.iteritems())
       return base.Migration(**result)
     else:
       return None
@@ -657,6 +660,7 @@ class ServerBackedMoeDbClient(MoeDbClient):
 
     data = self._Get('migration_for_revision', request_dict).get('migration')
     if data:
+      data = dict((str(k), v) for k, v in data.iteritems())
       result = base.Migration(**data)
       return result
     else:
