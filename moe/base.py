@@ -851,10 +851,10 @@ class CmdError(Error):
     Error.__init__(self, message, **kwargs)
     self.returncode = returncode
     self.stdout = stdout
-    self.message = message
+    self._message = message
 
   def __str__(self):
-    message = self.message
+    message = self._message
     if self.stdout:
       message = message + '\n' + self.stdout
     return message
