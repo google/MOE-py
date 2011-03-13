@@ -307,8 +307,9 @@ class MercurialRepository(base.SourceControlRepository):
 
   def RevisionsSinceEquivalence(self, head_revision, which_repository, db):
     limit = 400
+    # TODO(augie): use --template here to have something easier to parse
     text = self._client.RunHg(
-        ['log', '-v', '-l', str(limit), '-r',
+        ['log', '--style', 'default', '-v', '-l', str(limit), '-r',
          '%s:0' % head_revision], need_stdout=True)
     revisions = ParseRevisions(text, self._name)
     result = []
