@@ -222,7 +222,22 @@ class MercurialEditor(base.CodebaseEditor):
       task = moe_app.RUN.ui.BeginIntermediateTask(
           'push_changes', 'Pushing changes remotely (may require auth)')
       with task:
-        self.RunHg(['push'], unhook_stdout_and_err=True)
+        push_args = ['push']
+        if self.client.username and self.client.password:
+          scheme = ''
+          prefix = self.RunHg(['paths', 'default'], need_stdout=True).strip()
+          if '://' in prefix:
+            scheme, prefix = prefix.split('://', 1)
+            if '/' in prefix:
+              prefix = prefix.split('/')[0]
+          push_args.extend([
+            '--config', 'auth.moe-xyzzy.prefix=' + prefix,
+            '--config', 'auth.moe-xyzzy.username=' + self.client.username,
+            '--config', 'auth.moe-xyzzy.password=' + self.client.password,
+                            ])
+          if scheme:
+            push_args.extend(['--config', 'auth.moe-xyzzy.schemes=' + scheme])
+        self.RunHg(push_args, unhook_stdout_and_err=True)
     return revision.strip()
 
   def Diff(self):
@@ -250,12 +265,14 @@ class MercurialEditor(base.CodebaseEditor):
 class MercurialRepository(base.SourceControlRepository):
   """A Mercurial repository."""
 
-  def __init__(self, repository_url, name, branch='default'):
+  def __init__(self, repository_url, name, branch='default',
+               username='', password=''):
     self._url = repository_url
     self._name = name
     self._branch = branch
     self._client = MercurialClient(moe_app.RUN.temp_dir, repository_url,
-                                   username='', password='', branch=branch)
+                                   username=username, password=password,
+                                   branch=branch)
 
   def Export(self, directory, revision=''):
     """Export repository at revision into directory."""
@@ -420,7 +437,9 @@ class MercurialRepositoryConfig(base.RepositoryConfig):
   def MakeRepository(self, translators=None):
     repository = MercurialRepository(self.url,
                                      self._repository_name,
-                                     self._branch)
+                                     self._branch,
+                                     username=self.username,
+                                     password=self.password)
     return (repository,
             codebase_utils.ExportingCodebaseCreator(
                 repository, self.username, self.password,
