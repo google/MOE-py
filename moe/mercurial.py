@@ -273,20 +273,15 @@ class MercurialRepository(base.SourceControlRepository):
 
   def GetHeadRevision(self, highest_rev_id=''):
     """Returns the id of the head revision (as a str)."""
-    args = ['log', '-l', '1', '-b', self._branch]
+    args = ['log', '--template', '{node|short}\n',
+            '-l', '1', '-b', self._branch]
     if highest_rev_id:
       args += [ '-r', '%s:0' % (highest_rev_id) ]
     try:
       log = self._client.RunHg(args, need_stdout=True)
     except base.CmdError:
       return None
-    for line in log.split('\n'):
-      if line.startswith('changeset:'):
-        line = line[len('changeset:'):]
-        line = line.strip()
-        revision = line.split(':')[1]
-        return revision
-    return None
+    return log.strip()
 
   def GenerateChangeLog(self, start_revision, end_revision):
     """Generate a change log of revisions suitable for migrating.
