@@ -206,14 +206,9 @@ class MercurialEditor(base.CodebaseEditor):
           'push_changes', 'Pushing changes remotely (may require auth)')
       with task:
         self.RunHg(['push'], unhook_stdout_and_err=True)
-    log = self.RunHg(['log', '-l', '1'], need_stdout=True)
-    for line in log.split('\n'):
-      if line.startswith('changeset:'):
-        line = line[len('changeset:'):]
-        line = line.strip()
-        revision = line.split(':')[1]
-        return revision
-    return None
+    revision = self.RunHg(['log', '-l', '1' , '--template', '{node|short}'],
+                     need_stdout=True)
+    return revision.strip()
 
   def Diff(self):
     """Return a diff of the changes made in this client."""
