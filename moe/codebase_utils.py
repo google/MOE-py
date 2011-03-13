@@ -200,11 +200,11 @@ class ExportingCodebaseCreator(CodebaseCreator):
                              project_space=project_space,
                              translators=translators)
     self._repository = repository
-    self.client = repository.MakeClient(
-        moe_app.RUN.temp_dir, repository_username, repository_password)
     self._additional_files_re = additional_files_re
     self._repository_name = repository_name
     self._project_space = project_space
+    self._repository_username = repository_username
+    self._repository_password = repository_password
 
   def Create(self, revision):
     """Export a revision of this codebase to the filesystem.
@@ -239,7 +239,10 @@ class ExportingCodebaseCreator(CodebaseCreator):
         # then renaming to the desired destination atomically.
         self._repository.Export(path, revision)
 
-      client_creator = lambda: self.client
+      client_creator = lambda: self._repository.MakeClient(
+        moe_app.RUN.temp_dir,
+        self._repository_username, self._repository_password,
+        revision=revision)
 
       result = Codebase(path, None, client_creator=client_creator,
                         additional_files_re=self._additional_files_re,
