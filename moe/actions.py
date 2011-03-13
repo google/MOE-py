@@ -337,6 +337,10 @@ class Migration(Action):
       try:
         source = self.migration_config.source_codebase_creator.Create(
             up_to_revision.rev_id)
+        translated_source = (
+          self.migration_config.source_codebase_creator.CreateInProjectSpace(
+            up_to_revision.rev_id,
+            self.migration_config.target_codebase_creator.ProjectSpace()))
       except base.CodebaseCreationError:
         if not remaining_revisions:
           # This is an error at the last revision
@@ -402,11 +406,11 @@ class Migration(Action):
       if migration_strategy.merge_strategy == base.MERGE:
         merge_args = dict(previous_codebase=previous_source)
         if self.migration_config.IsExport():
-          merge_args['generated_codebase'] = source
+          merge_args['generated_codebase'] = translated_source
           merge_args['public_codebase'] = base_codebase
         elif self.migration_config.IsImport():
           merge_args['generated_codebase'] = base_codebase
-          merge_args['public_codebase'] = source
+          merge_args['public_codebase'] = translated_source
         merge_config = merge_codebases.MergeCodebasesConfig(**merge_args)
         merge_context = merge_codebases.MergeCodebasesContext(
             merge_config)
@@ -417,7 +421,7 @@ class Migration(Action):
             expanded_path=merge_context.config.merged_codebase,
             project_space=p_s)
       else:
-        codebase_to_push = source
+        codebase_to_push = translated_source
 
       editor = base_codebase.MakeEditor(migration_strategy, migration_revisions)
 
