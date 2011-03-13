@@ -300,7 +300,7 @@ def FindBinaryOnPath(binary_name, path):
 
 def EnvironPath():
   """Return, as list of str, the path from the environment."""
-  return ':'.split(os.environ.get('PATH', ''))
+  return os.environ.get('PATH', '').split(':')
 
 
 class MoeReport(object):
