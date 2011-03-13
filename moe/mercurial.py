@@ -276,6 +276,7 @@ class MercurialRepository(base.SourceControlRepository):
 
   def Export(self, directory, revision=''):
     """Export repository at revision into directory."""
+    self._Pull()
     args = ['archive']
     if revision:
       args += ['-r', revision]
@@ -290,6 +291,7 @@ class MercurialRepository(base.SourceControlRepository):
 
   def GetHeadRevision(self, highest_rev_id=''):
     """Returns the id of the head revision (as a str)."""
+    self._Pull()
     args = ['log', '--template', '{node|short}\n',
             '-l', '1', '-b', self._branch]
     if highest_rev_id:
@@ -318,6 +320,7 @@ class MercurialRepository(base.SourceControlRepository):
                                                         end_revision))
 
   def RevisionsSinceEquivalence(self, head_revision, which_repository, db):
+    self._Pull()
     limit = 400
     # TODO(augie): use --template here to have something easier to parse
     text = self._client.RunHg(
@@ -335,7 +338,11 @@ class MercurialRepository(base.SourceControlRepository):
     raise base.Error("Could not find equivalence in 400 revisions.")
 
   def MakeRevisionFromId(self, id):
+    self._Pull()
     return base.Revision(rev_id=id, repository_name=self._name)
+
+  def _Pull(self):
+    self._client.RunHg(['pull'])
 
 
 _HG_BINARY = base.FindBinaryOnPath('hg',
