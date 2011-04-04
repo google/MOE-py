@@ -13,6 +13,7 @@ import gflags as flags
 from moe import base
 from moe import db_client
 from moe import moe_app
+from moe.translators import translators
 
 FLAGS = flags.FLAGS
 
@@ -59,9 +60,10 @@ class CreateCodebaseCmd(appcommands.Cmd):
           'head_revision', 'Determining Head Revision') as t:
         head_revision = repository.GetHeadRevision(source_revision)
         t.SetResult(head_revision)
-      source_codebase = codebase_creator.CreateInProjectSpace(
-          revision=head_revision, project_space=FLAGS.target_project_space)
+      source_codebase = codebase_creator.Create(revision=head_revision)
+      translated_codebase = translators.TranslateToProjectSpace(
+          source_codebase, FLAGS.target_project_space, project.translators)
 
-      moe_app.RUN.ui.Info('Codebase created at %s' % source_codebase.Path())
+      moe_app.RUN.ui.Info('Codebase created at %s' % translated_codebase.Path())
     finally:
       project.db.Disconnect()

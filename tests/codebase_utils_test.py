@@ -34,34 +34,6 @@ class CodebaseUtilsTest(basetest.TestCase):
         codebase.ExpandedPath(), additional_files_re='foo.py')
     self.assertEqual(codebase2.Walk(), [])
 
-  def testCreateInProjectSpace(self):
-    class MockTranslator(object):
-      def FromProjectSpace(self):
-        return 'foo'
-
-      def ToProjectSpace(self):
-        return 'bar'
-
-      def Translate(self, unused_codebase):
-        path = test_util.TestResourceFilename('codebases/modified_python/')
-        return codebase_utils.Codebase(path, project_space='bar')
-
-    foo_creator = test_util.StaticCodebaseCreator(
-        {'1001': 'simple_python'}, project_space='foo',
-        translators=[MockTranslator()])
-    created_codebase = foo_creator.CreateInProjectSpace('1001',
-                                                        project_space='foo')
-    self.assertEqual('foo', created_codebase.ProjectSpace())
-
-    created_codebase = foo_creator.CreateInProjectSpace('1001',
-                                                        project_space='bar')
-    self.assertEqual('bar', created_codebase.ProjectSpace())
-
-    self.assertRaises(
-        base.Error,
-        foo_creator.CreateInProjectSpace,
-        '1001', project_space='baz')
-
   def testCreateModifiableCopy(self):
     internal_creator = test_util.StaticCodebaseCreator(
         {'1001': 'simple_python'})

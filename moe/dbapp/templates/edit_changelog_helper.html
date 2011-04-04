@@ -9,7 +9,7 @@
 {% endcomment %}
 
 <div class="goog-inline-block moe-save-area"
-     action="/api/edit_changelog?migration_id={{ migration.migration_id }}">
+     action="/api/edit_changelog?migration_id={{ migration.migration_id }}&project_name={{ migration.project.name }}">
 <div class="moe-help-box">
   <textarea name="changelog" cols=80 rows=8>{{ migration.changelog }}</textarea><br/>
   <span class="moe-save-area-feedback"></span>

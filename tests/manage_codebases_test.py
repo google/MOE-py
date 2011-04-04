@@ -96,10 +96,10 @@ class ManageCodebasesTestCase(basetest.TestCase):
 
     internal_repos = test_util.MockRepository(
         'test_internal', '1001',
-        revisions_since_equivalence_results=([], [equiv]))
+        recur_until_matching_revision_results=(['1001']))
     public_repos = test_util.MockRepository(
         'test_public', '1',
-        revisions_since_equivalence_results=([], [equiv]))
+        recur_until_matching_revision_results=(['1']))
     repository_configs = {
         'test_internal': (internal_repos, None),
         'test_public': (public_repos, None),
@@ -120,10 +120,10 @@ class ManageCodebasesTestCase(basetest.TestCase):
     revisions = [base.Revision('1003'), base.Revision('1002')]
     internal_repos = test_util.MockRepository(
         'test_internal', '1001',
-        revisions_since_equivalence_results=(revisions, [equiv]))
+        recur_until_matching_revision_results=(['1003', '1002', '1001']))
     public_repos = test_util.MockRepository(
         'test_public', '1',
-        revisions_since_equivalence_results=([], [equiv]))
+        recur_until_matching_revision_results=(['1']))
     repository_configs = {
         'test_internal': (internal_repos, None),
         'test_public': (public_repos, None),
@@ -147,22 +147,23 @@ class ManageCodebasesTestCase(basetest.TestCase):
 
     internal_repos = test_util.MockRepository(
         'test_internal', '1001',
-        revisions_since_equivalence_results=([], [equiv]))
-    revisions = [base.Revision('3'), base.Revision('2')]
+        recur_until_matching_revision_results=['1001'])
     public_repos = test_util.MockRepository(
         'test_public', '1',
-        revisions_since_equivalence_results=(revisions, [equiv]))
+        recur_until_matching_revision_results=['3', '2', '1'])
     repository_configs = {
         'test_internal': (internal_repos, None),
         'test_public': (public_repos, None),
         }
+
+    revisions = [base.Revision('2'), base.Revision('3')]
 
     self.RunScenario(
         db, repository_configs,
         self._ECs('1001', '1') + [
             ActionExpectation(
                 actions.Migration,
-                {'revisions': list(reversed(revisions)),
+                {'revisions': revisions,
                  'num_revisions_to_migrate': -1,
                  }, self)
             ]
@@ -176,10 +177,10 @@ class ManageCodebasesTestCase(basetest.TestCase):
     revisions = [base.Revision('1003'), base.Revision('1002')]
     internal_repos = test_util.MockRepository(
         'test_internal', '1001',
-        revisions_since_equivalence_results=(revisions, [equiv]))
+        recur_until_matching_revision_results=['1003', '1002', '1001'])
     public_repos = test_util.MockRepository(
         'test_public', '1',
-        revisions_since_equivalence_results=([], [equiv]))
+        recur_until_matching_revision_results=['1'])
     repository_configs = {
         'test_internal': (internal_repos, None),
         'test_public': (public_repos, None),
@@ -196,6 +197,7 @@ class ManageCodebasesTestCase(basetest.TestCase):
             ],
         project_config_name='separate_revisions_project_config.txt',
         )
+
 
 if __name__ == '__main__':
   basetest.main()

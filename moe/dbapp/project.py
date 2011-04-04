@@ -78,6 +78,8 @@ def GetProjectInfos():
 
 
 def GetProject(project_name):
+  if not project_name:
+    raise Exception('missing project_name parameter')
   if not PROJECT_NAME_RE.match(project_name):
     raise Exception(
         'project name "%s" contains characters outsize [a-zA-Z0-9_]' %
@@ -531,22 +533,43 @@ class MoeApiRequestHandler(webapp.RequestHandler):
     if not project:
       message = 'No such project: %s' % project_name
       self._WriteJsonResult(error=404, error_message=message)
+      return None
 
     return project
 
+  def _RequireProjectName(self):
+    """Require a project name (but do not load the project for performance)."""
+    project_name = self.request.get('project_name')
+    if not project_name:
+      self._WriteJsonResult(error=400, error_message='project_name missing')
+      return None
+
+    return project_name
 
   def _RequireMigration(self):
     """Loads the migration object specified in the "migration_id" param.
 
-    Writes a JSON error and returns None on failure."""
+    Writes error message and returns None when missing."""
     migration_id = int(self.request.get('migration_id'))
     migration = LookupMigrationByMigrationId(migration_id)
     if not migration:
       message = 'Invalid migration id: %s' % migration_id
-      self._WriteJsonResult(error=400, error_message=message)
+      self._WriteJsonResult(error=404, error_message=message)
       return None
-    return migration
+    # Scope migrations to the requested project. I.e., even if they
+    # ask by name about a migration for another project, pretend we don't
+    # know about it. This is a case of database-client confidentiality.
+    project_name = self._RequireProjectName()
+    if not project_name:
+      return None
 
+    if migration.project.name != project_name:
+      message = ("project_name (%s) not equal to Migration's project name (%s)"
+                 % (self.request.get('project_name'), migration.project.name))
+      self._WriteJsonResult(error=404, error_message=message)
+      return None
+
+    return migration
 
   def _RequireComment(self):
     """Loads the comment object specified in the "comment_id" param.
@@ -825,7 +848,10 @@ class MigrationForRevision(MoeApiRequestHandler):
 
 class StartMigration(MoeApiRequestHandler):
   def post(self):
-    self._SetMigration(status=models.STATUS_ACTIVE)
+    given_status = self.request.get('status')
+    self._SetMigration(status=
+                       given_status and models.STATUS_NAMES.index(given_status)
+                       or models.STATUS_ACTIVE)
 
 
 class NoteMigration(MoeApiRequestHandler):
@@ -844,6 +870,7 @@ class ApproveMigration(MoeApiRequestHandler):
   def post(self):
     migration = self._RequireMigration()
     if not migration:
+      self._WriteJsonResult()
       return
     migration_id = str(migration.migration_id)
 
@@ -914,6 +941,7 @@ class UnapproveMigration(MoeApiRequestHandler):
   def post(self):
     migration = self._RequireMigration()
     if not migration:
+      self._WriteJsonResult()
       return
     id = str(migration.migration_id)
 
@@ -930,6 +958,7 @@ class FinishMigration(MoeApiRequestHandler):
   def post(self):
     migration = self._RequireMigration()
     if not migration:
+      self._WriteJsonResult()
       return
 
     project = migration.project
@@ -962,6 +991,7 @@ class CancelMigration(MoeApiRequestHandler):
   def post(self):
     migration = self._RequireMigration()
     if not migration:
+      self._WriteJsonResult()
       return
     migration.status = models.STATUS_CANCELED
     migration.put()
@@ -974,6 +1004,7 @@ class MigrationInfo(MoeApiRequestHandler):
   def get(self):
     migration = self._RequireMigration()
     if not migration:
+      self._WriteJsonResult()
       return
 
     abbreviated = self.request.get('abbreviated', u'True') == u'True'
@@ -1005,6 +1036,7 @@ class UpdateMigrationDiff(MoeApiRequestHandler):
   def post(self):
     migration = self._RequireMigration()
     if not migration:
+      self._WriteJsonResult()
       return
 
     diff = self.request.get('diff', '')
@@ -1021,6 +1053,7 @@ class EditChangelog(MoeApiRequestHandler):
   def post(self):
     migration = self._RequireMigration()
     if not migration:
+      self._WriteJsonResult()
       return
     changelog = self.request.get('changelog')
     migration.AddChangelog(changelog)
@@ -1156,6 +1189,7 @@ class AddComment(MoeApiRequestHandler):
   def post(self):
     migration = self._RequireMigration()
     if not migration:
+      self._WriteJsonResult()
       return
 
     req = self.request
@@ -1192,6 +1226,7 @@ class GetComments(MoeApiRequestHandler):
   def get(self):
     migration = self._RequireMigration()
     if not migration:
+      self._WriteJsonResult()
       return
 
     comments = GetCommentsByMigration(migration)

@@ -9,7 +9,7 @@
 {% endcomment %}
 
 <div class="goog-inline-block moe-save-area"
-     action="/api/edit_comment?migration_id={{ migration.migration_id }}">
+     action="/api/edit_comment?migration_id={{ migration.migration_id }}&project_name={{ migration.project.name }}">
 <input type="hidden"
      value="{{ comment.comment_id }}" name="comment_id_{{ forloop.counter0 }}">
 <div class="moe-help-box">

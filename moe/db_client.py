@@ -169,7 +169,7 @@ def _Get(url, method, args=None):
     object, the loaded JSON result.
 
   Raises:
-    base.Error if there was an error
+    base.HttpError if there was an error
   """
   args = args or {}
   url = '%s/api/%s' % (url.rstrip('/'), method)
@@ -179,8 +179,8 @@ def _Get(url, method, args=None):
   try:
     url_result = urllib2.urlopen(url=url)
   except urllib2.HTTPError, e:
-    raise base.Error('GET failed for %s\nError=%s\nContents=%s'
-                     % (url, str(e), e.read()))
+    raise base.HttpError('GET failed for %s\nError=%s\nContents=%s'
+                    % (url, str(e), e.read()))
 
   data = url_result.read().decode('utf-8')
   result = simplejson.loads(data)
@@ -414,7 +414,7 @@ class ServerBackedMoeDbClient(MoeDbClient):
 
   def StartMigration(self, direction, up_to_revision,
                      migrated_revisions=None,
-                     changelog='', diff='', link=''):
+                     changelog='', diff='', link='', pre_approved=False):
     """Note the start of a migration.
 
     Args:
@@ -424,7 +424,7 @@ class ServerBackedMoeDbClient(MoeDbClient):
       changelog: str, the commit changelog of the migration
       diff: str, the diff of the migration's code
       link: str, a URL link to the migration's changes
-      source_repository: str, the name of the source repository
+      pre_approved: bool, whether the migration is approved on creation
 
     Returns:
       str, a migration ID. This ID is an opaque token that has no
@@ -439,6 +439,8 @@ class ServerBackedMoeDbClient(MoeDbClient):
             'migrated_revisions': simplejson.dumps(
                 [r.Dump() for r in migrated_revisions or []]),
            }
+    if pre_approved:
+      data['status'] = base.Migration.APPROVED
 
     result = self._Post('start_migration', data=data)
     return result['migration_id']
@@ -452,10 +454,11 @@ class ServerBackedMoeDbClient(MoeDbClient):
     """
     data = {'migration_id': migration_id,
             'submitted_as': simplejson.dumps(submitted_as.Dump()),
+            'project_name': self.project.name,
            }
     try:
       self._Post('finish_migration', data=data)
-    except base.Error:
+    except base.HttpError:
       # it was a stray instance of the string "MOE_MIGRATION"
       pass
 
@@ -501,7 +504,7 @@ class ServerBackedMoeDbClient(MoeDbClient):
     data = {'migration_id': migration_id}
     try:
       self._Post('cancel_migration', data=data)
-    except base.Error:
+    except base.HttpError:
       # it was a stray instance of the string "MOE_MIGRATION"
       pass
 
@@ -521,9 +524,12 @@ class ServerBackedMoeDbClient(MoeDbClient):
       instead of a nice pythonic object. TODO(dbentley): revisit this
       decision.
     """
-    result = self._Get('migration_info', {'migration_id': migration_id,
-                                          'abbreviated': abbreviated})
-    return result
+    try:
+      return self._Get('migration_info', {'migration_id': migration_id,
+                                          'abbreviated': abbreviated,
+                                          'project_name': self.project.name })
+    except base.HttpError:
+      return None
 
   def GetMigration(self, migration_id, abbreviated=True):
     """Get one migration from the database.
@@ -535,9 +541,10 @@ class ServerBackedMoeDbClient(MoeDbClient):
     Returns:
       base.Migration
     """
-    return base.Migration(
-      **dict((str(k), v) for k, v in
-             self.MigrationInfo(migration_id, abbreviated).iteritems()))
+    info = self.MigrationInfo(migration_id, abbreviated)
+    if not info:
+      return None
+    return base.Migration(**StringifyKeys(info))
 
   def FindMigration(self, up_to_revision, abbreviated=True):
     """Get one migration from the database.
@@ -554,8 +561,7 @@ class ServerBackedMoeDbClient(MoeDbClient):
                           simplejson.dumps(up_to_revision.Dump()),
                         'abbreviated': abbreviated})
     if result:
-      result = dict((str(k), v) for k, v in result.iteritems())
-      return base.Migration(**result)
+      return base.Migration(**StringifyKeys(result))
     else:
       return None
 
@@ -570,7 +576,8 @@ class ServerBackedMoeDbClient(MoeDbClient):
     if len(diff) > DIFF_MAX_LENGTH:
       diff = diff[:DIFF_MAX_LENGTH]
     self._Post('update_migration_diff',
-               {'migration_id': migration_id, 'diff': diff, 'link': link})
+               {'migration_id': migration_id, 'diff': diff, 'link': link,
+                'project_name': self.project.name })
 
   def GetLastProcess(self):
     """Get information for the last manage_codebases run from the db.
@@ -660,8 +667,7 @@ class ServerBackedMoeDbClient(MoeDbClient):
 
     data = self._Get('migration_for_revision', request_dict).get('migration')
     if data:
-      data = dict((str(k), v) for k, v in data.iteritems())
-      result = base.Migration(**data)
+      result = base.Migration(**StringifyKeys(data))
       return result
     else:
       return None
@@ -763,4 +769,22 @@ def EquivalencesFromDicts(equivalence_dicts):
 
 
 def MigrationsFromDicts(migration_dicts):
-  return [base.Migration(**m) for m in migration_dicts]
+  return [base.Migration(**StringifyKeys(m)) for m in migration_dicts]
+
+
+def StringifyKeys(d):
+  """Turn a dict with unicode keys into a dict with str keys.
+
+  The latter can be passed as kwargs with **; the former cannot.
+
+  Args:
+    d: dict of basestring -> object
+
+  Returns:
+    dict of str -> object
+
+  Raises:
+    some kind of unicode error in the case where a key needs to be
+    unicode.
+  """
+  return dict((str(k), v) for k, v in d.iteritems())

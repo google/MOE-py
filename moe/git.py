@@ -8,7 +8,6 @@
 import os
 import re
 import shutil
-import tempfile
 
 from google.apputils import file_util
 
@@ -153,7 +152,7 @@ class GitEditor(base.CodebaseEditor):
     # TODO(dbentley): obey additional_files_re
     # TODO(user): Ignore ^\.git$ directory by default, and possibly other
     # .git files.
-    return base.ListFiles(self.client.checkout, re.compile(r'/\.git'))
+    return base.ListFiles(self.client.checkout, re.compile(r'^\.git'))
 
   def PutFile(self, relative_dest, src):
     """Update relative_dest with src.
@@ -260,9 +259,9 @@ class GitEditor(base.CodebaseEditor):
           self.RunGit(['push', self.client.repository_url],
                       unhook_stdout_and_err=True)
       if self.client.gerrit_autoapprove:
-          self.RunGerrit(['review', '--verified=+1', '--code-review=+2',
-                          '--submit', '--project=%s' % self.client.gerrit_path,
-                          commit_id], unhook_stdout_and_err=True)
+        self.RunGerrit(['review', '--verified=+1', '--code-review=+2',
+                        '--submit', '--project=%s' % self.client.gerrit_path,
+                        commit_id], unhook_stdout_and_err=True)
     return commit_id
 
   def Diff(self):
@@ -333,9 +332,9 @@ class GitRepository(base.SourceControlRepository):
     base.RunCmd('tar', ['xf', tar_file, '--directory', directory])
     os.remove(os.path.join(directory, tar_file))
 
-  def MakeClient(self, unused_directory, unused_username='',
-                 unused_password=''):
-    """Make a client for editing this codebase."""
+  def MakeClient(self, unused_directory, username='', password=''):
+    (username, password) = (username, password)  # Silence gpylint
+    # Make a client for editing this codebase.
     # TODO(user): rethink lazy creation of client
     return self._client
 
@@ -361,18 +360,20 @@ class GitRepository(base.SourceControlRepository):
     return base.ConcatenateChangelogs(self.GetRevisions(start_revision,
                                                         end_revision))
 
-  def RevisionsSinceEquivalence(self, head_revision, which_repository, db):
-    """Find all revisions in this repository since an equivalence.
+  def RetrieveGitLog(self, limit, head_revision):
+    """Retrieves the git log of <limit> commits and parses them into revisions.
 
     Args:
-      head_revision: str, id of the revision to consider head
-      which_repository: one of base.[INTERNAL, PUBLIC], which repository this is
-      db: db_client.MoeDbClient, the db that stores equivalences
+      limit: The maximum number of log entries to retrieve.
+      head_revision: str, id of the revision to consider head, or None.
 
     Returns:
-      (seq of base.Revision, seq of equivalences)
+      List of revisions.
     """
-    limit = 400
+    # Newest appears first
+    # TODO(user): Something like
+    #   git log -400 --pretty=format:"%H%n%ae%n%cd%n%s%n>>>>END_OF_DESCRIPTION
+    # would make parsing of the log a lot easier. Change to that!
     args = ['log', '--format=medium',
             '-' + str(limit),
             '--no-decorate',  # no branch names
@@ -382,19 +383,21 @@ class GitRepository(base.SourceControlRepository):
     else:
       args += ['HEAD']
     text = self._client.RunGit(args, need_stdout=True)
-    revisions = ParseRevisions(text, self._name)
-    result = []
-    for r in revisions:
-      equivalences = db.FindEquivalences(r, which_repository)
-      if equivalences:
-        return result, equivalences
-      result.append(r)
-
-    # Uh-oh.
-    raise base.Error('Could not find equivalence in 400 revisions.')
+    return ParseRevisions(text, self._name)
 
   def MakeRevisionFromId(self, rev_id):
     return base.Revision(rev_id=rev_id, repository_name=self._name)
+
+  def RecurUntilMatchingRevision(self, starting_revision, matcher):
+    limit = 400
+    revisions = self.RetrieveGitLog(limit, starting_revision)
+    result = []
+    for r in revisions:
+      result.append(r)
+      if matcher(r):
+        return result
+
+    raise base.Error('Could not find equivalence in %d revisions.' % limit)
 
 
 def RunGit(args, **kwargs):
@@ -473,7 +476,7 @@ class GitRepositoryConfig(base.RepositoryConfig):
       self._repository_name = ''
     self._project_space = project_space
 
-  def MakeRepository(self, translators=None):
+  def MakeRepository(self):
     repository = GitRepository(self.url,
                                self._repository_name,
                                self.branch,
@@ -483,7 +486,6 @@ class GitRepositoryConfig(base.RepositoryConfig):
                 repository,
                 repository_name=self._repository_name,
                 additional_files_re=self.additional_files_re,
-                translators=translators,
                 project_space=self._project_space))
 
   def Serialized(self):

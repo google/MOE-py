@@ -23,10 +23,11 @@ from lib2to3.main import main
 
 sys.exit(main("lib2to3.fixes"))"""
 
-class BasePythonTranslator(translators.Translator):
-    """The base class for the the MOE Python translators"""
 
-    def __init__(self, from_project_space, to_project_space):
+class BasePythonTranslator(translators.Translator):
+  """The base class for the the MOE Python translators."""
+
+  def __init__(self, from_project_space, to_project_space):
     translators.Translator.__init__(self)
     self._from_project_space = from_project_space
     self._to_project_space = to_project_space
@@ -70,7 +71,7 @@ class TwoToThreeTranslator(BasePythonTranslator):
       return modified_codebase
 
 
-class ThreeToTwoTranslator(translators.Translator):
+class ThreeToTwoTranslator(BasePythonTranslator):
   """A translator that invokes pythons 3to2 to translate."""
 
   def Translate(self, codebase):

@@ -6,6 +6,7 @@
 
 __author__ = 'dbentley@google.com (Daniel Bentley)'
 
+import os
 import sys
 
 import logging
@@ -146,3 +147,38 @@ class MoeUI(object):
   def BeginIntermediateTask(self, task_name, description):
     return self.BeginTask(task_name, description,
                           IntermediateTaskFormatter(self))
+
+  def InteractiveDecision(self, prompt, default='', validator=None):
+    """Get an Interactive decision from the user.
+
+    Args:
+      prompt: str, an explanation of the decision
+      default: str
+      validator: func of str -> str (or None.
+                 returns str explaining why the input was invalid, or None
+                 if it is valid.
+
+    Returns:
+      str
+    """
+    if not os.isatty(sys.stdin.fileno()):
+      return default
+    while True:
+      if default:
+        actual_prompt = '%s (Default: %s): ' % (prompt, default)
+      else:
+        actual_prompt = '%s: ' % prompt
+      if os.isatty(sys.stdin.fileno()):
+        decision = raw_input(self._Indent(actual_prompt))
+      else:
+        decision = ''
+      if not decision:
+        decision = default
+      if validator:
+        invalid_reason = validator(decision)
+        if invalid_reason:
+          self._Print('Invalid input %s (%s)' %
+                      (repr(decision), invalid_reason))
+          continue
+      break
+    return decision

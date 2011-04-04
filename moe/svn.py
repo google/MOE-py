@@ -23,7 +23,6 @@ from google.apputils.datelib import UTC
 
 from moe import base
 from moe import codebase_utils
-from moe import moe_app
 
 FLAGS = flags.FLAGS
 
@@ -432,7 +431,8 @@ class SvnRepository(base.SourceControlRepository):
 
   def GetHeadRevision(self, highest_rev_id=''):
     info = RunSvn(
-        ['log', '--xml', '-r', '%s:1' % (highest_rev_id or 'HEAD'), self._url],
+        ['log', '--xml', '-l', '1', '-r', '%s:1' %
+         (highest_rev_id or 'HEAD'), self._url],
         need_stdout=True)
     info_tree = ElementTree.XML(info)
     log = info_tree.find('logentry')
@@ -442,28 +442,26 @@ class SvnRepository(base.SourceControlRepository):
   def MakeRevisionFromId(self, id):
     return base.Revision(rev_id=id, repository_name=self._repository_name)
 
-  def RevisionsSinceEquivalence(self, head_revision, which_repository, db):
+  def RecurUntilMatchingRevision(self, starting_revision, matcher):
 
     # NB(dbentley): returns newest first
     limit = 50
     while True:
-      head_revision_int = int(head_revision)
+      starting_revision_int = int(starting_revision)
 
-      text = RunSvn(['log', '--xml', '-l', str(limit), '-r',
-                     '%s:1' % str(head_revision_int),
-                     self._url], need_stdout=True)
+      text = RunSvn(
+          ['log', '--xml', '-l', str(limit), '-r',
+           '%s:1' % str(starting_revision_int),
+           self._url], need_stdout=True)
       revisions = ParseRevisions(text, self._repository_name)
       result = []
       for r in revisions:
-        equivalences = db.FindEquivalences(r, which_repository)
-        moe_app.RUN.ui.Debug("equivalences for revision %s: %s" %
-                             (r.rev_id, str(equivalences)))
-        if equivalences:
-          return result, equivalences
         result.append(r)
+        if matcher(r):
+          return result
       limit *= 2
       if limit > 400:
-        raise base.Error("Could not find equivalence in 400 revisions.")
+        raise base.Error("Could not find matching revision in 400 revisions.")
 
   def Url(self):
     return self._url
@@ -529,14 +527,13 @@ class SvnRepositoryConfig(base.RepositoryConfig):
       self._repository_name = ''
     self._project_space = project_space
 
-  def MakeRepository(self, translators=None):
+  def MakeRepository(self):
     repository = SvnRepository(self.url, self._repository_name)
     return (repository,
             codebase_utils.ExportingCodebaseCreator(
                 repository, self.username, self.password,
                 repository_name=self._repository_name,
                 additional_files_re=self.additional_files_re,
-                translators=translators,
                 project_space=self._project_space))
 
   def Serialized(self):

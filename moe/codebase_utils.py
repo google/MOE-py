@@ -135,11 +135,9 @@ class Codebase(object):
 class CodebaseCreator(object):
   """Creates Codebases a MOE tool might be interested in."""
 
-  def __init__(self, repository_name=None, project_space=None,
-               translators=None):
+  def __init__(self, repository_name=None, project_space=None):
     self._repository_name = repository_name
     self._project_space = project_space
-    self._translators = translators or []
 
   def Create(self, revision=''):
     """Create the Codebase for this source control at a revision.
@@ -155,32 +153,6 @@ class CodebaseCreator(object):
     """
     raise NotImplementedError
 
-  def CreateInProjectSpace(self, revision='', project_space=base.PUBLIC_STR):
-    """Create a codebase in a project space (translating if necessary).
-
-    Args:
-      revision: str, the revision; if empty, use head revision
-      project_space: str, the project space to generate in
-
-    Returns:
-      Codebase, the created Codebase in the request proejct_space
-
-    Raises:
-      base.Error if no suitable translator can be found
-    """
-    original_codebase = self.Create(revision=revision)
-    original_project_space = original_codebase.ProjectSpace()
-    if original_project_space == project_space:
-      return original_codebase
-    for t in self._translators:
-      if (t.FromProjectSpace() == original_project_space and
-          t.ToProjectSpace() == project_space):
-        return t.Translate(original_codebase)
-    else:
-      # TODO(dbentley): should this be a CodebaseCreationError?
-      raise base.Error('Could find no translator from %s to %s' %
-                       (repr(original_project_space), repr(project_space)))
-
   def RepositoryName(self):
     """Return a string describing this repository, or None if N/A."""
     return self._repository_name
@@ -195,10 +167,9 @@ class ExportingCodebaseCreator(CodebaseCreator):
 
   def __init__(self, repository, repository_username='', repository_password='',
                additional_files_re=None, repository_name='',
-               project_space=base.PUBLIC_STR, translators=None):
+               project_space=base.PUBLIC_STR):
     CodebaseCreator.__init__(self, repository_name=repository_name,
-                             project_space=project_space,
-                             translators=translators)
+                             project_space=project_space)
     self._repository = repository
     self._additional_files_re = additional_files_re
     self._repository_name = repository_name
@@ -240,9 +211,8 @@ class ExportingCodebaseCreator(CodebaseCreator):
         self._repository.Export(path, revision)
 
       client_creator = lambda: self._repository.MakeClient(
-        moe_app.RUN.temp_dir,
-        self._repository_username, self._repository_password,
-        revision=revision)
+          moe_app.RUN.temp_dir,
+          self._repository_username, self._repository_password)
 
       result = Codebase(path, None, client_creator=client_creator,
                         additional_files_re=self._additional_files_re,

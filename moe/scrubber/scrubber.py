@@ -52,12 +52,16 @@ flags.DEFINE_string('config_file', '',
                     'Path to config file')
 flags.DEFINE_string('config_data', '',
                     'Text of the scrubber config')
+flags.DEFINE_string('explicit_inputfile_list', '',
+                    'List of files (with same base directory) to scrub')
 
 DIFFS_DIR = 'diffs'
 ORIGINAL_DIR = 'originals'
 OUTPUT_DIR = 'output'
 MODIFIED_DIR = 'modified'
-
+MAIN_USAGE_STRING = (
+    'List exactly one directory to scrub and, if you want, set '
+    '--explicit_inputfile_list to provide a list of input files.')
 
 class ScrubberConfig(object):
   """The config for a run of the scrubber.
@@ -67,10 +71,11 @@ class ScrubberConfig(object):
     other scrubbing-binaries to replace all the configuration.
   """
 
-  def __init__(self, codebase, extension_to_scrubber_map, default_scrubbers,
-               modify, output_tar):
+  def __init__(self, codebase, input_files, extension_to_scrubber_map,
+               default_scrubbers, modify, output_tar):
     # Other object state.
     self.codebase = os.path.abspath(codebase)
+    self.input_files = input_files
     self.modify = modify
     self.output_tar = output_tar
     self._comment_scrubbers = None
@@ -95,6 +100,7 @@ class ScrubberConfig(object):
     self.scrub_unknown_users = False
     self.scrub_authors = True
     self.scrub_proto_comments = False
+    self.scrub_non_documentation_comments = False
 
     # Java-specific options.
     self.scrub_java_testsize_annotations = False
@@ -164,6 +170,7 @@ class ScrubberConfig(object):
           '.yaml': self._PolyglotFileScrubbers(),
           '.sh': self._MakeShellScrubbers(),
           '.json': self._PolyglotFileScrubbers(),
+          '.swig': go_and_c_scrubbers,
           # Jars often have short sensitive strings in them based only on the
           # byte sequences these are. We might still like to scan jars, but a
           # way to reduce the false-positive rate is needed.
@@ -200,6 +207,9 @@ class ScrubberConfig(object):
   def _CommentScrubbers(self):
     if not self._comment_scrubbers:
       self._comment_scrubbers = []
+      if self.scrub_non_documentation_comments:
+        self._comment_scrubbers.append(
+            comment_scrubber.AllNonDocumentationCommentScrubber())
       self._comment_scrubbers.append(
           comment_scrubber.TodoScrubber(self.username_filter))
       if self.scrub_authors:
@@ -513,27 +523,23 @@ class ScrubberContext(object):
     Returns:
       seq of ScannedFile, the filenames to scan
     """
-    if not os.path.isdir(config.codebase):
-      self.AddError('%s is not a directory' % config.codebase)
     result = []
     stopwatch.sw.start('find')
     if config.rearranging_config:
       file_renamer = renamer.FileRenamer(config.rearranging_config)
     else:
       file_renamer = None
-    for (dirpath, _, filenames) in os.walk(config.codebase):
-      for filename in filenames:
-        full_filename = os.path.join(dirpath, filename)
-        relative_filename = self.RelativeFilename(full_filename)
-        if self.config.ignore_files_re.search(relative_filename):
-          continue
-        if file_renamer:
-          output_relative_filename = file_renamer.RenameFile(relative_filename)
-        else:
-          output_relative_filename = relative_filename
-        result.append(ScannedFile(
-            full_filename, relative_filename, self._temp_dir,
-            output_relative_filename=output_relative_filename))
+    for full_filename in config.input_files:
+      relative_filename = self.RelativeFilename(full_filename)
+      if self.config.ignore_files_re.search(relative_filename):
+        continue
+      if file_renamer:
+        output_relative_filename = file_renamer.RenameFile(relative_filename)
+      else:
+        output_relative_filename = relative_filename
+      result.append(ScannedFile(
+          full_filename, relative_filename, self._temp_dir,
+          output_relative_filename=output_relative_filename))
     stopwatch.sw.stop('find')
     return result
 
@@ -586,6 +592,7 @@ _SCRUBBER_CONFIG_KEYS = [
     u'scrub_sensitive_comments',
     u'rearranging_config',
     u'string_replacements',
+    u'scrub_non_documentation_comments',
 
     # User options
     u'usernames_to_scrub',
@@ -621,6 +628,7 @@ _SCRUBBER_CONFIG_KEYS = [
 
 
 def ScrubberConfigFromJson(codebase,
+                           input_files,
                            config_json,
                            extension_to_scrubber_map=None,
                            default_scrubbers=None,
@@ -646,7 +654,7 @@ def ScrubberConfigFromJson(codebase,
 
   config_utils.CheckJsonKeys('scrubber config', config_json,
                              _SCRUBBER_CONFIG_KEYS)
-  config = ScrubberConfig(codebase, extension_to_scrubber_map,
+  config = ScrubberConfig(codebase, input_files, extension_to_scrubber_map,
                           default_scrubbers, modify, output_tar)
 
   # General options.
@@ -675,6 +683,7 @@ def ScrubberConfigFromJson(codebase,
   SetOption(u'scrub_sensitive_comments')
   SetOption(u'rearranging_config')
   SetOption(u'string_replacements')
+  SetOption(u'scrub_non_documentation_comments')
 
   # User options.
   # TODO(dborowitz): Make the scrubbers pass unicode to the UsernameFilter.
@@ -898,34 +907,141 @@ class ScrubberError(object):
     self.file_obj = file_obj
 
 
-def ParseConfigFile(filename, codebase):
+def ParseConfigFile(filename, codebase, input_files):
   """Parse a config file that may be ASCII protobuf or JSON."""
   return ScrubberConfigFromJson(
       codebase,
+      input_files,
       config_utils.ReadConfigFile(filename),
-      **FLAGS.FlagValuesDict())
+      **DictCopyWithoutCodebase(FLAGS.FlagValuesDict()))
+
+
+def DictCopyWithoutCodebase(template_dict):
+  """Returns a copy of template_dict w/o the 'codebase' key.
+
+  Args:
+    template_dict: The dict to clone.
+
+  Returns:
+    The cloned dict, w/o a 'codebase' key.
+  """
+  result = dict(template_dict)
+  if 'codebase' in result:
+    result.pop('codebase')
+  return result
+
+
+def CreateInputFileListFromDir(src_dir):
+  """Returns the list of files in a directory as list of absolute names.
+
+  Args:
+    src_dir: Directory to walk, containing the sources (string).
+
+  Returns:
+    Pair of (error string, list of files contained in this directory,
+    absolute file names.) If error_string is None, the operation was
+    successful. If error_string is set, the list is meaningless.
+  """
+  error_string = None
+  result_list = []
+  if not os.path.isdir(src_dir):
+    error_string = '%s is not a directory' % src_dir
+  else:
+    stopwatch.sw.start('create_input_list')
+    for (dirpath, _, filenames) in os.walk(src_dir):
+      for filename in filenames:
+        full_filename = os.path.join(dirpath, filename)
+        result_list.append(full_filename)
+    stopwatch.sw.stop('create_input_list')
+  return (error_string, result_list)
+
+
+def ValidateInputFileList(candidate_inputs, abs_codebase):
+  """Checks no file is listed twice and they're all in the same dir.
+
+  Args:
+    candidate_inputs: List of relative or absolute filenames.
+    abs_codebase: Absolute pathname of the codebase.
+
+  Returns:
+    Pair of (error string, list of absolute file names). If error string is
+    None, the operation was successful. If error string is set, the list
+    is meaningless.
+  """
+  # Make the candidate pathnames absolute
+  result = [os.path.abspath(input_file) for input_file in candidate_inputs]
+
+  unique_inputs = set(result)
+  if len(unique_inputs) != len(result):
+    # Double inputs could cause confusion, let's not accept them.
+    return ('Some input files are listed more than once.', None)
+
+  if not os.path.commonprefix(result).startswith(abs_codebase):
+    return ('Files must be underneath codebase \'%s\'' % abs_codebase, None)
+
+  return (None, result)
+
+
+def BadCommand(message=None):
+  """Ends the app with exit status code 3, displaying the message.
+
+  This function will not return.
+
+  Args:
+    message: The message to display, followed by the standard usage message.
+  """
+  if message:
+    app.usage(detailed_error=('%s\n%s' % (message, MAIN_USAGE_STRING)),
+              exitcode=3)
+  else:
+    app.usage(detailed_error=MAIN_USAGE_STRING, exitcode=3)
+
+
+def GetInputFiles(codebase):
+  """Looks at flags and returns the files to process.
+
+  Only call this method if flags appear in a valid combination.
+
+  Args:
+    codebase: Base-dir for the codebase.
+
+  Returns:
+    Pair (error string, input file list)
+  """
+  if FLAGS.explicit_inputfile_list:
+    inputs = FLAGS.explicit_inputfile_list.split()
+    return ValidateInputFileList(inputs, codebase)
+  else:
+    return CreateInputFileListFromDir(codebase)
 
 
 def main(args):
   stopwatch.sw.start()
+
   if not len(args) == 2:
-    app.usage(detailed_error='Must list exactly one directory to scrub.',
-              exitcode=3)
+    BadCommand('Must list exactly one directory to scrub.')
   codebase = args[1]
 
   if FLAGS.config_data and FLAGS.config_file:
-    raise app.UsageError(
-        'Specify at most one of --config_data and --config_file')
+    BadCommand('Specify at most one of --config_data and --config_file.')
+
+  codebase = os.path.abspath(codebase)
+  (err_str, input_files) = GetInputFiles(codebase)
+  if err_str:
+    BadCommand(err_str)
 
   if FLAGS.config_file:
-    context = ScrubberContext(ParseConfigFile(FLAGS.config_file, codebase))
+    context = ScrubberContext(
+        ParseConfigFile(FLAGS.config_file, codebase, input_files))
   else:
     if FLAGS.config_data:
       json_obj = config_utils.LoadConfig(FLAGS.config_data)
     else:
       json_obj = {}
     config_obj = ScrubberConfigFromJson(
-        codebase, json_obj, **FLAGS.FlagValuesDict())
+        codebase, input_files, json_obj,
+        **DictCopyWithoutCodebase(FLAGS.FlagValuesDict()))
+
     context = ScrubberContext(config_obj)
 
   print 'Found %d files' % len(context.files)

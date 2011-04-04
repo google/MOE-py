@@ -39,8 +39,10 @@ def DefineFlags(flag_values):
                       flag_values=flag_values)
   flags.DEFINE_string('public_revision', '',
                       'The public revision in equivalence with the given '
-                      'internal revision',
+                      'internal revision.',
                       flag_values=flag_values)
+  flags.DEFINE_bool('install_on_db_only', False,
+                    'Install project on MOE db and then quit.')
 
 
 class InitCodebasesContext(object):
@@ -133,6 +135,7 @@ class InitCodebasesContext(object):
         check = actions.EquivalenceCheck(
             self._internal_revision_obj.rev_id,
             self._public_revision, self.project.config,
+            self.project.translators,
             actions.EquivalenceCheck.NoteIfSameErrorIfDifferent)
         check.Perform(
             self.project.internal_codebase_creator,
@@ -158,6 +161,16 @@ def main(unused_argv):
       create_project=True, acquire_lock=False)
 
   try:
+    if FLAGS.install_on_db_only:
+      moe_app.RUN.ui.Info(
+          ('Project %s now exists on the MOE db. '
+           'You can run local MOE commands (create_codebase, e.g.) to prepare. '
+           'When you are ready to start using MOE for real:\n'
+           '1) run moe change to create a change\n'
+           '2) submit the change and note the equivalence\n'
+           '3) start running moe auto\n')
+          % project.config.name)
+      return
     internal_revision = FLAGS.internal_revision
     if not internal_revision:
       raise app.UsageError('Must supply a revision using --internal_revision '

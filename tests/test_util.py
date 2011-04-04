@@ -102,10 +102,11 @@ class MockDbClient(db_client.MoeDbClient):
 
   def StartMigration(self, direction, up_to_revision,
                      changelog='', diff='', link='', migrated_revisions=None,
-                     source_repository=''):
+                     source_repository='', pre_approved=False):
     """Note the start of a migration."""
     migration = base.Migration(
-        self._NextID(), direction, base.Migration.ACTIVE,
+        self._NextID(), direction,
+        pre_approved and base.Migration.APPROVED or base.Migration.ACTIVE,
         up_to_revision, changelog=changelog, diff=diff, link=link,
         revisions=migrated_revisions)
 
@@ -226,17 +227,18 @@ class MockSourceControlClient(object):
 
 class MockRepository(object):
   def __init__(self, name, head_revision='',
-               revisions_since_equivalence_results=None):
+               recur_until_matching_revision_results=None):
     self.name = name
     self.head_revision = head_revision
-    self.revisions_since_equivalence_results = (
-        revisions_since_equivalence_results or ([], []))
+    self.recur_until_matching_revision_results = (
+        recur_until_matching_revision_results or [head_revision])
 
   def GetHeadRevision(self, highest_rev_id=''):
     return highest_rev_id or self.head_revision
 
-  def RevisionsSinceEquivalence(self, *args, **kwargs):
-    return self.revisions_since_equivalence_results
+  def RecurUntilMatchingRevision(self, *args, **kwargs):
+    return [base.Revision(r) for r in
+            self.recur_until_matching_revision_results]
 
   def MakeClient(self, *unused_args, **unused_kwargs):
     # TODO(dbentley): should this take a revision?
@@ -249,13 +251,13 @@ class MockRepository(object):
 class MockRepositoryConfig(base.RepositoryConfig):
   """An empty repository config."""
 
-  def __init__(self, name, repository=None, cc=None, translators=None):
+  def __init__(self, name, repository=None, cc=None):
     self.name = name
     self.additional_files_re = None
     self.repository = repository or MockRepository(self.name)
     self.cc = cc or MockCodebaseCreator(self.name)
 
-  def MakeRepository(self, translators=None):
+  def MakeRepository(self):
     return (self.repository, self.cc)
 
   def Serialized(self):
@@ -274,12 +276,12 @@ def MockOutMakeRepositoryConfig(repository_configs=None):
 
   if repository_configs:
     def MakeMockRepositoryConfig(json_config, repository_name='',
-                                 translators=None, project_space=''):
+                                 project_space=''):
       repository, cc = repository_configs[repository_name]
       return MockRepositoryConfig(repository_name, repository, cc)
   else:
     def MakeMockRepositoryConfig(json_config, repository_name='',
-                                 translators=None, project_space=''):
+                                 project_space=''):
       return MockRepositoryConfig(repository_name)
   config.MakeRepositoryConfig = MakeMockRepositoryConfig
 
@@ -352,7 +354,7 @@ class StaticCodebaseCreator(codebase_utils.CodebaseCreator):
   """A CodebaseCreator that 'creates' by returning static directories."""
 
   def __init__(self, revision_to_path_map, client_creator=None,
-               project_space=base.PUBLIC_STR, translators=None):
+               project_space=base.PUBLIC_STR):
     """Constructs.
 
     Args:
@@ -361,10 +363,8 @@ class StaticCodebaseCreator(codebase_utils.CodebaseCreator):
       client_creator: function -> CodebaseClient, a way to get
                       a client to modify this codebase
       project_space: str, which project space this creates in
-      translators: list of translators.Translators
     """
-    codebase_utils.CodebaseCreator.__init__(self, project_space=project_space,
-                                            translators=translators)
+    codebase_utils.CodebaseCreator.__init__(self, project_space=project_space)
     self._revision_to_path_map = revision_to_path_map
     self._client_creator = client_creator
 

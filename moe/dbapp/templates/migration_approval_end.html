@@ -18,6 +18,8 @@
 <div>
 <form action="/api/unapprove_migration?out=html" method="post">
   <input type="hidden"
+        value="{{ migration.project.name }}" name="project_name">
+  <input type="hidden"
          value="{{ migration.migration_id }}" name="migration_id">
   <input type="submit" value="Unapprove this migration">
 </form>
@@ -28,6 +30,8 @@
 <div>
 <form action="/api/cancel_migration?out=html" method="post">
   <input type="hidden"
+        value="{{ migration.project.name }}" name="project_name">
+  <input type="hidden"
          value="{{ migration.migration_id }}" name="migration_id">
   <input type="submit" value="Cancel this migration">
 </form>
@@ -36,6 +40,8 @@
 {% if not migration.IsSubmitted %}
 <div>
 <form action="/api/finish_migration?out=html" method="post">
+  <input type="hidden"
+        value="{{ migration.project.name }}" name="project_name">
   <input type="hidden"
          value="{{ migration.migration_id }}" name="migration_id">
   <input type="submit" value="Note finished migration"> <br>

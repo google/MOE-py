@@ -47,6 +47,7 @@ class MigrationTest(basetest.TestCase):
                                base.Revision('1'),
                                revisions,
                                project,
+                               [],
                                config, False, -1)
 
     result = export.Perform()
@@ -72,7 +73,7 @@ class MigrationTest(basetest.TestCase):
     revisions = [ base.Revision('2') ]
     action = actions.Migration(
         base.Revision('1'), base.Revision('1001'),
-        revisions, project, config, False, -1)
+        revisions, project, [], config, False, -1)
 
     result = action.Perform()
     self.assertEqual(result, None)
@@ -102,7 +103,7 @@ class MigrationTest(basetest.TestCase):
     revisions = [ base.Revision('1002', changelog='log') ]
     action = actions.Migration(
         base.Revision('1001'), base.Revision('1'),
-        revisions, project, config, False, -1)
+        revisions, project, [], config, False, -1)
 
     result = action.Perform(db=mock_db)
     self.assertFalse(result)
@@ -145,7 +146,7 @@ class MigrationTest(basetest.TestCase):
     revisions = [ base.Revision('1002', changelog='log') ]
     action = actions.Migration(
         base.Revision('1001'), base.Revision('1'),
-        revisions, project, config, False, -1)
+        revisions, project, [], config, False, -1)
 
     result = action.Perform(db=mock_db)
     equivalence_check = result.actions[0]
@@ -190,7 +191,7 @@ class MigrationTest(basetest.TestCase):
     revisions = [ base.Revision('2', changelog='log') ]
     action = actions.Migration(
         base.Revision('1'), base.Revision('1001'),
-        revisions, project, config, False, -1)
+        revisions, project, [], config, False, -1)
 
     result = action.Perform(db=mock_db)
     self.assertFalse(result)
@@ -233,7 +234,7 @@ class MigrationTest(basetest.TestCase):
                   base.Revision('1003', changelog='1003')]
     action = actions.Migration(
         base.Revision('1001'), base.Revision('1'),
-        revisions, project, config, False, 1)
+        revisions, project, [], config, False, 1)
 
     result = action.Perform(db=mock_db)
     migration = result.actions[0]
@@ -272,7 +273,7 @@ class MigrationTest(basetest.TestCase):
     action = actions.Migration(
         base.Revision('1001'),
         base.Revision('1'),
-        revisions, project, config, False, 1)
+        revisions, project, [], config, False, 1)
 
     self.assertRaises(base.CodebaseCreationError, action.Perform,
                       db=mock_db)
@@ -311,7 +312,7 @@ class MigrationTest(basetest.TestCase):
     action = actions.Migration(
         base.Revision('1001'),
         base.Revision('1'),
-        revisions, project, config, False, -1)
+        revisions, project, [], config, False, -1)
 
     result = action.Perform(db=mock_db)
     self.assertEqual(result, None)
@@ -353,7 +354,7 @@ class MigrationTest(basetest.TestCase):
     action = actions.Migration(
         base.Revision('1001'),
         base.Revision('1'),
-        revisions, project, config, False, 1)
+        revisions, project, [], config, False, 1)
 
     result = action.Perform(db=mock_db)
     self.assertEqual(len(result.actions), 1)
@@ -370,6 +371,44 @@ class MigrationTest(basetest.TestCase):
     self.assertEqual(mock_db.GetMigration('3', abbreviated=False).changelog,
                      'something')
 
+  def testPreApprovedMigration(self):
+    mock_db = test_util.MockDbClient(migration_id_seed=88)
+    mock_editor = test_util.MockEditor()
+    mock_client = test_util.MockClient(
+        lambda migration_strategy, revisions: mock_editor)
+    project = test_util.EmptyMoeProjectConfig()
+
+    internal_creator = test_util.StaticCodebaseCreator(
+        {'1001': 'simple_python',
+         '1002': 'simple_python2'})
+
+    public_creator = test_util.StaticCodebaseCreator(
+        {'1': 'simple_python'},
+        lambda: mock_client)
+
+    config = actions.MigrationConfig(base.Migration.EXPORT,
+                                     internal_creator,
+                                     project.internal_repository_config,
+                                     public_creator,
+                                     project.public_repository_config,
+                                     None,
+                                     project.export_strategy)
+    revisions = [base.Revision('1002', changelog='log', pre_approved=True)]
+    action = actions.Migration(
+        base.Revision('1001'), base.Revision('1'),
+        revisions, project, [], config, False, -1)
+
+    result = action.Perform(db=mock_db)
+    self.assertFalse(result)
+
+    expected = base.Migration(
+        migration_id='88',
+        direction=base.Migration.EXPORT,
+        status=base.Migration.APPROVED,
+        up_to_revision=base.Revision('1002'),
+        changelog='log',
+        revisions=revisions)
+    self.assertEqual(expected.Dict(), mock_db.GetMigration('88').Dict())
 
 if __name__ == '__main__':
   basetest.main()

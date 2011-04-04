@@ -9,10 +9,12 @@
 import os
 import sys
 
+import mox
 from google.apputils import file_util
 import gflags as flags
 
 from google.apputils import basetest
+from moe import moe_app
 from moe import svn
 import test_util
 
@@ -37,6 +39,12 @@ def tearDown():
 
 
 class SVNTest(basetest.TestCase):
+  def setUp(self):
+    self.mox = mox.Mox()
+
+  def tearDown(self):
+    self.mox.UnsetStubs()
+    self.mox.ResetAll()
 
   def testShortLog(self):
     self.RunScenario('short_log', FilterLog)
@@ -58,10 +66,27 @@ class SVNTest(basetest.TestCase):
     file_util.Write(out_file, output)
     basetest.DiffTestFiles(expected, out_file)
 
+  def testRecurUntilMatchingRevision(self):
+    repos = svn.SvnRepository('http://not_a_url', 'ummy svn repository')
+    log_file = os.path.join(SCENARIOS_DIR, 'long_log', 'input')
+    log_text = file_util.Read(log_file)
+    def Revision12(r):
+      return r.rev_id == '12'
+
+    self.mox.StubOutWithMock(svn, 'RunSvn')
+    svn.RunSvn(['log', '--xml', '-l', '50', '-r', '15:1',
+                'http://not_a_url'], need_stdout=True).AndReturn(log_text)
+    self.mox.ReplayAll()
+    result = repos.RecurUntilMatchingRevision('15', Revision12)
+    self.assertEqual(4, len(result))
+    self.assertEqual('12', result[-1].rev_id)
+    self.mox.UnsetStubs()
+
 
 def FilterLog(text):
   return '\n'.join([str(rev) for rev in svn.ParseRevisions(text, '')])
 
 
 if __name__ == '__main__':
+  moe_app.InitForTest()
   basetest.main()

@@ -94,6 +94,9 @@ class ScrubberRegressionTest(basetest.TestCase):
   def testScrubProtoComments(self):
     self.RunScenario('scrub_proto_comments')
 
+  def testScrubSwigComments(self):
+    self.RunScenario('scrub_swig_comments')
+
   def testScrubHtmlAuthors(self):
     self.RunScenario('scrub_html_authors')
 
@@ -111,7 +114,8 @@ class ScrubberRegressionTest(basetest.TestCase):
   def RunScenarioWithConfigFile(self, scenario_base, config_file):
     codebase = os.path.join(scenario_base, 'input')
     config_path = os.path.join(scenario_base, config_file)
-    config = scrubber.ParseConfigFile(config_path, codebase)
+    (_, input_files) = scrubber.CreateInputFileListFromDir(codebase)
+    config = scrubber.ParseConfigFile(config_path, codebase, input_files)
     context = scrubber.ScrubberContext(config)
 
     context.Scan()

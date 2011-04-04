@@ -71,6 +71,36 @@ class TranslatorsTest(basetest.TestCase):
     self.assert_(base.AreCodebasesDifferent(
         without_additional_files_re, equivalent_codebase))
 
+  def testTranslateToProjectSpace(self):
+    class MockTranslator(object):
+      def FromProjectSpace(self):
+        return 'foo'
+
+      def ToProjectSpace(self):
+        return 'bar'
+
+      def Translate(self, unused_codebase):
+        path = test_util.TestResourceFilename('codebases/modified_python/')
+        return codebase_utils.Codebase(path, project_space='bar')
+
+    foo_creator = test_util.StaticCodebaseCreator(
+        {'1001': 'simple_python'}, project_space='foo')
+    created_codebase = foo_creator.Create('1001')
+    translated_codebase = translators.TranslateToProjectSpace(
+        created_codebase, 'foo', [MockTranslator()])
+    self.assertEqual('foo', created_codebase.ProjectSpace())
+    self.assertEqual('foo', translated_codebase.ProjectSpace())
+    self.assertEqual(created_codebase, translated_codebase)
+
+    translated_codebase = translators.TranslateToProjectSpace(
+        created_codebase, 'bar', [MockTranslator()])
+    self.assertEqual('bar', translated_codebase.ProjectSpace())
+
+    self.assertRaises(
+        base.Error,
+        translators.TranslateToProjectSpace,
+        created_codebase, 'baz', [MockTranslator()])
+
 
 if __name__ == '__main__':
   basetest.main()

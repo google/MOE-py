@@ -137,3 +137,24 @@ class IdentityTranslator(Translator):
           codebase.ExpandedPath(),
           additional_files_re=codebase.AdditionalFilesRe(),
           project_space=self._to_project_space)
+
+
+def TranslateToProjectSpace(codebase, to_project_space, translators):
+  """Translate codebase into to_project_space using translators.
+
+  Args:
+    codebase: codebase_utils.Codebase
+    to_project_space: str
+    translators: seq of Translator
+  """
+  original_project_space = codebase.ProjectSpace()
+  if original_project_space == to_project_space:
+    return codebase
+  for t in translators:
+    if (t.FromProjectSpace() == original_project_space and
+        t.ToProjectSpace() == to_project_space):
+      return t.Translate(codebase)
+  else:
+    # TODO(dbentley): should this be a CodebaseCreationError?
+    raise base.Error('Could find no translator from %s to %s' %
+                     (repr(original_project_space), repr(to_project_space)))

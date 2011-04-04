@@ -27,7 +27,7 @@ class EquivalenceTest(basetest.TestCase):
   def testEquivalent(self):
     project = test_util.EmptyMoeProjectConfig()
     ec = actions.EquivalenceCheck(
-        '1001', '1', project, actions.EquivalenceCheck.ErrorIfDifferent)
+        '1001', '1', project, [], actions.EquivalenceCheck.ErrorIfDifferent)
 
     internal_creator = test_util.StaticCodebaseCreator(
         {'1001': 'simple_python'})
@@ -42,7 +42,7 @@ class EquivalenceTest(basetest.TestCase):
     project = test_util.EmptyMoeProjectConfig()
     project.manual_equivalence_deltas = True
     ec = actions.EquivalenceCheck(
-        '1001', '1', project, actions.EquivalenceCheck.ErrorIfDifferent)
+        '1001', '1', project, [], actions.EquivalenceCheck.ErrorIfDifferent)
 
     internal_creator = test_util.StaticCodebaseCreator(
         {'1001': 'simple_python'})
@@ -56,7 +56,7 @@ class EquivalenceTest(basetest.TestCase):
   def testDifferent(self):
     project = test_util.EmptyMoeProjectConfig()
     ec = actions.EquivalenceCheck(
-        '1001', '1', project, actions.EquivalenceCheck.ErrorIfDifferent)
+        '1001', '1', project, [], actions.EquivalenceCheck.ErrorIfDifferent)
 
     internal_creator = test_util.StaticCodebaseCreator(
         {'1001': 'simple_python'})

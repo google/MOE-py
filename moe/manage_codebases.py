@@ -85,6 +85,15 @@ class Book(object):
     print 'REVISIONS TO EXPORT:'
     for r in self.revisions_to_export:
       print ' ', r.rev_id, r.single_scrubbed_log[0:60].replace('\n', ' ')
+    if self.finished_imports:
+      print 'FINISHED IMPORTS:'
+      for m in self.finished_imports:
+        print ' ', m.up_to_revision.rev_id, '->', m.submitted_as.rev_id
+    if self.finished_exports:
+      print 'FINISHED EXPORTS:'
+      for m in self.finished_exports:
+        print ' ', m.up_to_revision.rev_id, '->', m.submitted_as.rev_id
+
 
 
 class ManageCodebasesContext(object):
@@ -141,19 +150,31 @@ class ManageCodebasesContext(object):
         'revisions_since_equivalence',
         'Finding internal revision at equivalence')
     with task:
-      (i_r_since_equivalence, internal_candidate_equivalences) = (
-          self.project.internal_repository.RevisionsSinceEquivalence(
-              current.internal_revision, base.INTERNAL, self.project.db))
-      task.SetResult(internal_candidate_equivalences[0].internal_revision)
+      def InternalRevisionAtEquivalence(r):
+        return bool(self.project.db.FindEquivalences(r, base.INTERNAL))
+      i_r_since_equivalence = (
+          self.project.internal_repository.RecurUntilMatchingRevision(
+              current.internal_revision, InternalRevisionAtEquivalence))
+      # the last revision is at equivalence
+      internal_candidate_equivalences = self.project.db.FindEquivalences(
+          i_r_since_equivalence[-1], base.INTERNAL)
+      task.SetResult(i_r_since_equivalence[-1].rev_id)
+      i_r_since_equivalence = i_r_since_equivalence[:-1]
 
     task = moe_app.RUN.ui.BeginImmediateTask(
         'revisions_since_equivalence',
         'Finding public revision at equivalence')
     with task:
-      (p_r_since_equivalence, public_candidate_equivalences) = (
-          self.project.public_repository.RevisionsSinceEquivalence(
-              current.public_revision, base.PUBLIC, self.project.db))
-      task.SetResult(public_candidate_equivalences[0].public_revision)
+      def PublicRevisionAtEquivalence(r):
+        return bool(self.project.db.FindEquivalences(r, base.PUBLIC))
+      p_r_since_equivalence = (
+          self.project.public_repository.RecurUntilMatchingRevision(
+              current.public_revision, PublicRevisionAtEquivalence))
+      # the last revision is at equivalence
+      public_candidate_equivalences = self.project.db.FindEquivalences(
+          p_r_since_equivalence[-1], base.PUBLIC)
+      task.SetResult(p_r_since_equivalence[-1].rev_id)
+      p_r_since_equivalence = p_r_since_equivalence[:-1]
 
     equivalence = None
     # Ensure there is a compatible equivalence.
@@ -307,6 +328,7 @@ class ManageCodebasesContext(object):
         book.equivalence.internal_revision,
         book.equivalence.public_revision,
         self.project.config,
+        self.project.translators,
         actions.EquivalenceCheck.ErrorIfDifferent))
 
     # Next, we check newly-finished migrations.
@@ -315,13 +337,13 @@ class ManageCodebasesContext(object):
     for m in book.finished_imports:
       result.append(actions.EquivalenceCheck(
           m.submitted_as.rev_id, m.up_to_revision.rev_id, self.project.config,
-          actions.EquivalenceCheck.NoteIfSame))
+          self.project.translators, actions.EquivalenceCheck.NoteIfSame))
 
     for m in book.finished_exports:
       result.append(actions.EquivalenceCheck(
           # Note the different order of arguments
           m.up_to_revision.rev_id, m.submitted_as.rev_id, self.project.config,
-          actions.EquivalenceCheck.NoteIfSame))
+          self.project.translators, actions.EquivalenceCheck.NoteIfSame))
 
     # At this point, we're just trying to see if we happen to be lucky.
     # We could check all pairs of revisions, but that's expensive.
@@ -329,7 +351,8 @@ class ManageCodebasesContext(object):
     result.append(actions.EquivalenceCheck(
         book.current.internal_revision,
         book.current.public_revision,
-        self.project.config, actions.EquivalenceCheck.NoteAndStopIfSame))
+        self.project.config, self.project.translators,
+        actions.EquivalenceCheck.NoteAndStopIfSame))
 
 
     if book.revisions_to_import:
@@ -367,6 +390,7 @@ class ManageCodebasesContext(object):
           previous_revision, applied_against,
           book.revisions_to_import,
           self.project.config,
+          self.project.translators,
           import_config, False, num_revisions_to_migrate))
 
     # TODO(dbentley): we should only do one of importing or exporting per run.
@@ -399,7 +423,8 @@ class ManageCodebasesContext(object):
       result.append(actions.Migration(
           previous_revision, applied_against,
           book.revisions_to_export,
-          self.project.config, export_config, False, num_revisions_to_migrate))
+          self.project.config, self.project.translators,
+          export_config, False, num_revisions_to_migrate))
 
     return result
 
@@ -452,39 +477,6 @@ class ManageCodebasesContext(object):
       self.return_code = self._report.GetReturnCode()
     finally:
       self.project.db.Disconnect()
-
-
-def ChooseMigrations(repository, start, end, target,
-                     equivalence, project, migration_config):
-  """Choose how to clump revisions into migrations.
-
-  Args:
-    repository: base.CodebaseRepository
-    start: str, the first revision not to choose
-    end: str, the last revision to choose
-    target: str, the revision in the target repository against which the
-            migrations are to be made
-    equivalence: base.Correspondence, an equivalence
-    project: config.MoeProject
-    migration_config: actions.MigrationConfig
-
-  Returns:
-    sequence of Actions
-  """
-  revisions = repository.GetRevisions(start, end)
-  if not revisions:
-    return []
-
-  # TODO(dbentley): we can't handle separate_revisions from dvcs's
-  if migration_config.migration_strategy.separate_revisions:
-    num_revisions_to_migrate = 1
-  else:
-    num_revisions_to_migrate = -1
-
-  # TODO(dbentley): we shouldn't just set False.
-  return [actions.Migration(
-      start, target, revisions, project.config, migration_config, False,
-      num_revisions_to_migrate)]
 
 
 def main(unused_argv):

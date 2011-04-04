@@ -91,7 +91,7 @@ class InvalidClientError(Error):
 
 class HttpError(Error):
   """Error in making an http request."""
-  def __init__(self, s, contents):
+  def __init__(self, s, contents=''):
     Error.__init__(self, s)
     self.contents = contents
 
@@ -548,29 +548,34 @@ class SourceControlRepository(object):
     """
     raise NotImplementedError
 
-  def RevisionsSinceEquivalence(self, head_revision, which_repository, db):
-    """Find all the revisions in this repository since an equivalence.
+  def RecurUntilMatchingRevision(self, starting_revision, matcher):
+    """Find revisions from head until a predicate is matched.
 
-    This returns both the revisions and the equivalences.
+    For instance, if we wanted to find the current sequence of changes by
+    dbentley@, we would call:
+      RecurUntilMatchingRevision(lambda r: r.Author() == 'dbentley')
 
-    In the case of a DVCS, the revisions are not ordered, and must be considered
-      atomically. TODO(dbentley): fix this.
+    This is useful because MOE often wants to operate on a range of changes
+    "since" some concept. E.g., the revisions from head to the last
+    equivalence.
 
-    It is clear that There will often be >1 equivalence for DVCS'es.
-    But there will also often be >1 equivalence for linear VCS'es.
-    E.g., there are two equivalences: (1001, 1), (1002, 1).
-      Then when we call RevisionsSinceEquivalence()
-      on public repository, both of these will be returned as equivalences.
+    Returns newest revisions first.
 
-    NB(dbentley): returns newest revisions first
+    Inclusive of the matching revision.
+    (Corollary: the returned sequence will always have at least one Revision.)
+
+    TODO(dbentley): change this from returning a list to a graph, to better
+      support DVCS'es.
 
     Args:
-      head_revision: str, id of the revision to consider head
-      which_reposiotry: one of base.[INTERNAL, PUBLIC], which repository this is
-      db: db_client.MoeDbClient, the db that stores equivalences
+      matcher: func of Revision -> bool
+      starting_revision: str, id of the revision to start at
 
     Returns:
-      (seq of base.Revision, seq of equivalences)
+      seq of Revision
+
+    Raises:
+      base.Error if no such revision found in a reasonable history
     """
     raise NotImplementedError
 
@@ -594,7 +599,8 @@ class Revision(object):
 
   def __init__(self, rev_id, repository_name='',
                changelog='', author='', time=None,
-               scrubbed_log='', single_scrubbed_log=''):
+               scrubbed_log='', single_scrubbed_log='',
+               pre_approved=False):
     """Create a Revision object.
 
     Args:
@@ -607,6 +613,7 @@ class Revision(object):
       scrubbed_log: str, the revision's log as we think it could appear publicly
       single_scrubbed_log: str, the revision's log as it could appear publicly
                            if this is the only revision in the migration
+      pre_approved: bool, whether this revision is pre-approved for migration
     """
     self.rev_id = rev_id
     self.repository_name = repository_name
@@ -622,6 +629,7 @@ class Revision(object):
 
     self.scrubbed_log = scrubbed_log or changelog
     self.single_scrubbed_log = single_scrubbed_log or self.scrubbed_log
+    self.pre_approved = pre_approved
 
   def __str__(self):
     lines = ['Revision: %s' % self.rev_id]
@@ -859,6 +867,9 @@ class CmdError(Error):
       message = message + '\n' + self.stdout
     return message
 
+  def AppendMessage(self, s):
+    self._message += '\n' + s
+
 
 def RunCmd(cmd, args, cwd=None, need_stdout=False, print_stdout_and_err=False,
            unhook_stdout_and_err=False,
@@ -933,14 +944,11 @@ def RunCmd(cmd, args, cwd=None, need_stdout=False, print_stdout_and_err=False,
 class RepositoryConfig(object):
   """Configuration for a MOE repository."""
 
-  def MakeRepository(self, translators=None):
+  def MakeRepository(self):
     """Make the repository.
 
     NB: implementations of this function should be safe to run in a test
         (e.g., they should not have to talk to a server just to be constructed.)
-
-    Args:
-      translators: seq of translators.Translator
 
     Returns:
       (SourceControlRepository, CodebaseCreator)

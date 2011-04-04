@@ -9,6 +9,7 @@ import os
 import re
 import shutil
 import tempfile
+import urlparse
 
 from google.apputils import app
 from google.apputils import file_util
@@ -21,16 +22,16 @@ from moe import moe_app
 class MercurialClient(base.CodebaseClient):
   """Implementation for codebases stored in Mercurial (Hg)."""
 
-  def __init__(self, temp_dir, repository_url, username='', password='',
+  def __init__(self, repository_url, username='', password='',
                branch='default', revision=''):
     """Create MercurialClient.
 
     Args:
-      temp_dir: temporary directory to use for our client.
       repository_url: url to check out
       username: hg repository username
       password: hg repository password
       branch: hg named branch
+      revision: str, revision to checkout at
     """
     self.repository_url = repository_url
     self.username = username
@@ -45,7 +46,8 @@ class MercurialClient(base.CodebaseClient):
     # We add 'clone' because hg can't clone into an existing directory.
     # So, we create a tempdir, then designate a non-existent directory
     # in there as where we will put the clone.
-    checkout = os.path.join(tempfile.mkdtemp(dir=temp_dir, prefix='hg_'),
+    checkout = os.path.join(tempfile.mkdtemp(
+        dir=moe_app.RUN.temp_dir, prefix='hg_'),
                             'clone')
 
     self.checkout = os.path.abspath(checkout)
@@ -60,12 +62,14 @@ class MercurialClient(base.CodebaseClient):
       print 'Checking out; you may have to enter username and password'
       self.checked_out = True
       if self._revision:
-        RunHg(['clone', self.repository_url, 'clone'],
+        self.RunHg(['clone', self.repository_url, 'clone'],
               cwd=os.path.dirname(self.checkout), unhook_stdout_and_err=True)
         self.RunHg(['checkout', self._revision])
       else:
-        RunHg(['clone', '-b', self._branch, self.repository_url, 'clone'],
-              cwd=os.path.dirname(self.checkout), unhook_stdout_and_err=True)
+        # TODO(dbentley): we should use "#foo" instead of "-b foo"
+        self.RunHg(['clone', '-b', self._branch, self.repository_url, 'clone'],
+                   cwd=os.path.dirname(self.checkout),
+                   unhook_stdout_and_err=True)
       print 'Checked out.'
     else:
       # TODO(user): update hg client here
@@ -75,9 +79,11 @@ class MercurialClient(base.CodebaseClient):
 
   def RunHg(self, args, **kwargs):
     self.Checkout()
-    kwargs['cwd'] = self.checkout
+    if not 'cwd' in kwargs:
+      kwargs['cwd'] = self.checkout
     # TODO(user): try to use username/password
-    return RunHg(args, **kwargs)
+    return RunHg(AddAuth(args, self.username, self.password,
+                         self.repository_url), **kwargs)
 
   def MakeEditor(self, migration_strategy, revisions=None):
     """Make an editor for this client."""
@@ -203,9 +209,8 @@ class MercurialEditor(base.CodebaseEditor):
     """
 
     def Heads():
-      return filter(None,
-                    self.RunHg(['heads', '--template', '{node|short}\n'],
-                               need_stdout=True).split('\n'))
+      return [h for h in self.RunHg(['heads', '--template', '{node|short}\n'],
+                         need_stdout=True).split('\n') if h]
 
     starting_heads = Heads()
     if self.commit_strategy == base.LEAVE_PENDING:
@@ -215,14 +220,14 @@ class MercurialEditor(base.CodebaseEditor):
       hg_args += ['--user', self.client.username]
     self.RunHg(hg_args)
     current_heads = Heads()
-    revision = self.RunHg(['log', '-l', '1' , '--template', '{node|short}'],
-                     need_stdout=True)
+    revision = self.RunHg(['log', '-l', '1', '--template', '{node|short}'],
+                          need_stdout=True)
     if len(current_heads) == 2 and len(starting_heads) == 1:
       try:
         self.RunHg(['merge'], env={'HGMERGE': 'false'})
         self.RunHg(['commit', '-m', 'Automated merge.'])
-      except base.CmdError, e:
-        # TODO(augie): print an error here
+      except base.CmdError:
+        # TODO(user): print an error here
         self.RunHg(['update', '--clean', '-r', 'tip'])
     if self.commit_strategy == base.COMMIT_REMOTELY:
       task = moe_app.RUN.ui.BeginIntermediateTask(
@@ -232,15 +237,21 @@ class MercurialEditor(base.CodebaseEditor):
         if self.client.username and self.client.password:
           scheme = ''
           prefix = self.RunHg(['paths', 'default'], need_stdout=True).strip()
+          # TODO(dbentley): use urlparse
           if '://' in prefix:
             scheme, prefix = prefix.split('://', 1)
             if '/' in prefix:
               prefix = prefix.split('/')[0]
+          # The mercurial binary has no way to just pass a username and
+          # password, in an attempt to protect our passwords. Thus, we have
+          # to pass it as a way of extending the configuration. We use
+          # moe-xyzzy to avoid namespace collision.
+          # TODO(dbentley): consider using HGRCPATH env variable.
           push_args.extend([
-            '--config', 'auth.moe-xyzzy.prefix=' + prefix,
-            '--config', 'auth.moe-xyzzy.username=' + self.client.username,
-            '--config', 'auth.moe-xyzzy.password=' + self.client.password,
-                            ])
+              '--config', 'auth.moe-xyzzy.prefix=' + prefix,
+              '--config', 'auth.moe-xyzzy.username=' + self.client.username,
+              '--config', 'auth.moe-xyzzy.password=' + self.client.password,
+              ])
           if scheme:
             push_args.extend(['--config', 'auth.moe-xyzzy.schemes=' + scheme])
         self.RunHg(push_args, unhook_stdout_and_err=True)
@@ -264,8 +275,7 @@ class MercurialEditor(base.CodebaseEditor):
     return self.client.checkout
 
   def RunHg(self, args, **kwargs):
-    kwargs['cwd'] = self.client.checkout
-    return RunHg(args, **kwargs)
+    return self.client.RunHg(args, **kwargs)
 
 
 class MercurialRepository(base.SourceControlRepository):
@@ -278,7 +288,7 @@ class MercurialRepository(base.SourceControlRepository):
     self._branch = branch
     self._username = username
     self._password = password
-    self._client = MercurialClient(moe_app.RUN.temp_dir, repository_url,
+    self._client = MercurialClient(repository_url,
                                    username=username, password=password,
                                    branch=branch)
 
@@ -295,7 +305,7 @@ class MercurialRepository(base.SourceControlRepository):
   def MakeClient(self, directory, username='', password='', revision=''):
     """Make a client for editing this codebase."""
     # TODO(user): rethink creation of client in constructor
-    return MercurialClient(moe_app.RUN.temp_dir, self._url,
+    return MercurialClient(self._url,
                            username=self._username, password=self._password,
                            branch=self._branch, revision=revision)
 
@@ -329,29 +339,29 @@ class MercurialRepository(base.SourceControlRepository):
     return base.ConcatenateChangelogs(self.GetRevisions(start_revision,
                                                         end_revision))
 
-  def RevisionsSinceEquivalence(self, head_revision, which_repository, db):
+  def RecurUntilMatchingRevision(self, starting_revision, matcher):
     self._Pull()
     limit = 400
-    # TODO(augie): use --template here to have something easier to parse
+    # TODO(user): use --template here to have something easier to parse
     text = self._client.RunHg(
         ['log', '--style', 'default', '-v', '-l', str(limit), '-r',
-         '%s:0' % head_revision], need_stdout=True)
+         '%s:0' % starting_revision], need_stdout=True)
     revisions = ParseRevisions(text, self._name)
     result = []
     for r in revisions:
-      equivalences = db.FindEquivalences(r, which_repository)
-      if equivalences:
-        return result, equivalences
       result.append(r)
+      if matcher(r):
+        return result
 
     # Uh-oh.
-    raise base.Error("Could not find equivalence in 400 revisions.")
+    raise base.Error("Could not find matching revision in 400 revisions.")
 
   def MakeRevisionFromId(self, id):
     self._Pull()
     return base.Revision(rev_id=id, repository_name=self._name)
 
   def _Pull(self):
+    # Make sure we're looking at latest repository state.
     self._client.RunHg(['pull'])
 
 
@@ -451,7 +461,7 @@ class MercurialRepositoryConfig(base.RepositoryConfig):
       self._repository_name = ''
     self._project_space = project_space
 
-  def MakeRepository(self, translators=None):
+  def MakeRepository(self):
     repository = MercurialRepository(self.url,
                                      self._repository_name,
                                      self._branch,
@@ -462,7 +472,6 @@ class MercurialRepositoryConfig(base.RepositoryConfig):
                 repository, self.username, self.password,
                 repository_name=self._repository_name,
                 additional_files_re=self.additional_files_re,
-                translators=translators,
                 project_space=self._project_space))
 
   def Serialized(self):
@@ -470,3 +479,15 @@ class MercurialRepositoryConfig(base.RepositoryConfig):
 
   def Info(self):
     return {'name': self._repository_name}
+
+
+def AddAuth(args, username, password, url):
+  if username and password and url:
+    auth = [
+        '--config', 'auth.moe-xyzzy.prefix=' +  urlparse.urlparse(url)[1],
+        '--config', 'auth.moe-xyzzy.username=' + username,
+        '--config', 'auth.moe-xyzzy.password=' + password
+        ]
+  else:
+    auth = []
+  return auth + args

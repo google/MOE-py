@@ -15,7 +15,7 @@ from moe import db_client
 from moe import merge_codebases
 from moe import moe_app
 from moe import push_codebase
-
+from moe.translators import translators
 
 class Action(object):
   """An Action is a step in managing codebases."""
@@ -109,13 +109,14 @@ class EquivalenceCheck(Action):
   """Check if an Equivalence exists between an internal and public revision."""
 
   def __init__(self, internal_revision, public_revision, project,
-               result_dispatch):
+               translators, result_dispatch):
     """Construct.
 
     Args:
       internal_revision: str, the internal revision
       public_revision: str, the public revision
-      project: config.MoeProjectConfig, the project to test for it in
+      project: config.MoeProjectConfig
+      translators: seq of translators.Translator
       result_dispatch: function, will be called with the results of
                        Perform and must return a list of actions
 
@@ -123,6 +124,7 @@ class EquivalenceCheck(Action):
     Action.__init__(self, project)
     self.internal_revision = internal_revision
     self.public_revision = public_revision
+    self.translators = translators
     self.result_dispatch = result_dispatch
 
   def Perform(self, internal_codebase_creator, public_codebase_creator,
@@ -146,14 +148,16 @@ class EquivalenceCheck(Action):
         ('Checking for an Equivalence between internal revision %s and '
          'public revision %s') % (self.internal_revision, self.public_revision))
     with task:
-      generated = internal_codebase_creator.CreateInProjectSpace(
-        self.internal_revision,
-          base.PUBLIC_STR)
+      internal = internal_codebase_creator.Create(self.internal_revision)
+      generated = translators.TranslateToProjectSpace(
+          internal, base.PUBLIC_STR,
+          self.translators)
       public = public_codebase_creator.Create(self.public_revision)
       codebases_differ = None
       if not self.project.manual_equivalence_deltas:
         codebases_differ = base.AreCodebasesDifferent(
-            generated, public, noisy_files_re=self.project.noisy_files_re)
+            generated, public,
+            noisy_files_re=self.project.noisy_files_re)
 
       return self.result_dispatch(self,
                                   codebases_differ=codebases_differ,
@@ -263,6 +267,7 @@ class Migration(Action):
                applied_against,
                revisions,
                project,
+               translators,
                migration_config,
                mock_migration, num_revisions_to_migrate):
     """Construct.
@@ -271,7 +276,8 @@ class Migration(Action):
       previous_revision: base.Revision
       applied_against: base.Revision
       revisions: list of base.Revision, the revisions to export
-      project: config.MoeProjectConfig
+      project: config.MoeProjectContext
+      translators: seq of translators.Translator
       migration_config: MigrationConfig, the configuration for this migration
       mock_migration: bool, whether to only mock the migrations (i.e. inform
                       the database only)
@@ -282,6 +288,7 @@ class Migration(Action):
     self.previous_revision = previous_revision
     self.applied_against = applied_against
     self.revisions = revisions
+    self.translators = translators
     self.migration_config = migration_config
     self.mock_migration = mock_migration
     self.num_revisions_to_migrate = num_revisions_to_migrate
@@ -324,6 +331,7 @@ class Migration(Action):
             self.applied_against,
             remaining_revisions,
             self.project,
+            self.translators,
             self.migration_config, self.mock_migration, 1)
         result_migration_list = [result_migration]
         result = StateUpdate(actions=[result_migration] + actions)
@@ -337,10 +345,10 @@ class Migration(Action):
       try:
         source = self.migration_config.source_codebase_creator.Create(
             up_to_revision.rev_id)
-        translated_source = (
-          self.migration_config.source_codebase_creator.CreateInProjectSpace(
-            up_to_revision.rev_id,
-            self.migration_config.target_codebase_creator.ProjectSpace()))
+        translated_source = translators.TranslateToProjectSpace(
+            source,
+            self.migration_config.target_codebase_creator.ProjectSpace(),
+            self.translators)
       except base.CodebaseCreationError:
         if not remaining_revisions:
           # This is an error at the last revision
@@ -353,6 +361,7 @@ class Migration(Action):
             self.applied_against,
             self.revisions,
             self.project,
+            self.translators,
             self.migration_config, self.mock_migration,
             self.num_revisions_to_migrate + 1)
         return StateUpdate(actions=[action] + actions)
@@ -373,11 +382,14 @@ class Migration(Action):
           (migration.status == base.Migration.CANCELED)):
         changelog = base.ConcatenateChangelogs(migration_revisions)
         creator = self.migration_config.source_codebase_creator
+        pre_approved = (migration_strategy.preapprove_public_changelogs and
+                        all([r.pre_approved for r in migration_revisions]))
         migration_id = db.StartMigration(
             self.migration_config.direction,
             up_to_revision,
             changelog=changelog,
-            migrated_revisions=migration_revisions)
+            migrated_revisions=migration_revisions,
+            pre_approved=pre_approved)
       elif migration.status == base.Migration.SUBMITTED:
         # TODO(dbentley): this should never happen
         find_step = moe_app.RUN.report.AddStep(
@@ -464,7 +476,7 @@ class Migration(Action):
             internal_rev = commit_id
             public_rev = migration_revisions[-1].rev_id
           equivalence_check = EquivalenceCheck(
-            internal_rev, public_rev, self.project,
+              internal_rev, public_rev, self.project, self.translators,
               EquivalenceCheck.NoteIfSame)
           update = StateUpdate(actions=[equivalence_check] +
                                result_migration_list + actions)
@@ -496,6 +508,7 @@ class Migration(Action):
                 self.applied_against,
                 remaining_revisions,
                 self.project,
+                self.translators,
                 self.migration_config,
                 True,
                 1

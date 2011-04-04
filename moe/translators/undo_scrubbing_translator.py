@@ -52,8 +52,14 @@ class UndoScrubbingTranslator(translators.Translator):
 
     if self._from_project_space == 'internal':
       from_repository = self._project.internal_repository
+      to_repository = self._project.public_repository
+      def RevisionInToRepositoryAtEquivalence(r):
+        return bool(self._project.db.FindEquivalences(r, base.PUBLIC))
     elif self._from_project_space == 'public':
       from_repository = self._project.public_repository
+      to_repository = self._project.internal_repository
+      def RevisionInToRepositoryAtEquivalence(r):
+        return bool(self._project.db.FindEquivalences(r, base.INTERNAL))
     else:
       raise base.Error('Unexpected from_project_space: %s' %
                        self._from_project_space)
@@ -72,6 +78,14 @@ class UndoScrubbingTranslator(translators.Translator):
       # TODO(dbentley): finish this code
       1 /0
 
+      t2 = moe_app.RUN.ui.BeginImmediateTask(
+          'determine_apply_against',
+          'Determining revision to apply %s revision %s against' %
+          (self._from_project_space, source_revision.rev_id))
+      with t2:
+        rs = to_repository.RecurUntilMatchingRevision()
+
+        pass
       apply_against_revision = logic.DetermineRevisionToApplyAgainst(
           source_revision, self._from_project_space)
 
@@ -88,8 +102,10 @@ class UndoScrubbingTranslator(translators.Translator):
 
       unrearranged_dir = UndoRearranging(codebase, undo_renaming)
 
-      scrubbed_codebase = to_codebase_creator.CreateInProjectSpace(
-          project_space=from_project_space)
+      scrubbed_codebase = translators.TranslateToProjectSpace(
+          to_codebase_creator.Create(),
+          from_project_space,
+          self._project.translators)
 
       unrearranged_scrubbed_dir = UndoRearranging(scrubbed_codebase,
                                                   undo_renaming)

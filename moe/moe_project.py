@@ -30,11 +30,9 @@ class MoeProjectContext(object):
         config.config_json.get('translators', []), self)
 
     self.internal_repository, self.internal_codebase_creator = (
-        config.internal_repository_config.MakeRepository(
-            translators=self.translators))
+        config.internal_repository_config.MakeRepository())
     self.public_repository, self.public_codebase_creator = (
-        config.public_repository_config.MakeRepository(
-            translators=self.translators))
+        config.public_repository_config.MakeRepository())
 
 
 _SCRUBBING_TRANSLATOR_CONFIG_KEYS = [

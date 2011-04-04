@@ -20,6 +20,9 @@ from moe.scrubber import base
 from moe.scrubber import usernames
 
 
+COPYRIGHT_RE = re.compile('\W*copyright.*', re.I)
+
+
 class Comment(object):
   """Class encapsulating a comment in a file."""
 
@@ -536,6 +539,20 @@ class SensitiveStringCommentScrubber(CommentOrientedScrubber):
           base.ScrubberError(filter_name, w, '', file_obj)):
         continue
       return base.Revision('', 'Found sensitive string "%s"' % w)
+
+
+class AllNonDocumentationCommentScrubber(CommentOrientedScrubber):
+  """Scrub all non-documentation and non-copyright comments."""
+
+  def __init__(self):
+    CommentOrientedScrubber.__init__(self)
+
+  def ScrubComment(self, comment_text, unused_file_obj):
+    if COPYRIGHT_RE.match(comment_text):
+      return None
+    if comment_text.startswith('//') or comment_text.startswith('#') or (
+        comment_text.startswith('/*') and not comment_text.startswith('/**')):
+      return base.Revision('', 'Removing non-doc comment: %s' % comment_text)
 
 
 class AuthorDeclarationScrubber(CommentOrientedScrubber):

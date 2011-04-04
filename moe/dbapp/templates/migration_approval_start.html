@@ -11,4 +11,6 @@
 
 <form action="/api/approve_migration?out=html" method="post">
 <input type="hidden"
+      value="{{ migration.project.name }}" name="project_name">
+<input type="hidden"
       value="{{ migration.migration_id }}" name="migration_id">

@@ -29,31 +29,36 @@ def tearDown():
 
 class InitCodebasesTest(basetest.TestCase):
 
-  def RunScenario(self, project_config_name, codebase_expectations,
-                  editor_expectations):
-    # Mock out
+  def testSimple(self):
+    FLAGS.internal_revision = '1001'
     test_util.MockOutDatabase()
     test_util.MockOutMakeRepositoryConfig()
 
-    # the config file
     FLAGS.project_config_file = test_util.TestResourceFilename(
-        os.path.join('init_codebases', project_config_name))
+        os.path.join('init_codebases', 'project_config.txt'))
 
-    test_util.MockOutPusher(self, codebase_expectations, editor_expectations)
+    test_util.MockOutPusher(self, ('test_internal', '1001'),
+                            ('test_public', 'head'))
 
     init_codebases.raw_input = lambda s: 'y'
     init_codebases.getpass.getpass = lambda s: 'fake_password'
     init_codebases.main([])
 
-  def testSimple(self):
-    FLAGS.internal_revision = '1001'
-    self.RunScenario('project_config.txt',
-                     ('test_internal', '1001'),
-                     ('test_public', 'head'))
-
   def testSpecifyAnEquivalence(self):
-    # TODO(dbentley): we need a way to mock out equivalence check
-    pass
+    test_util.MockOutDatabase()
+    test_util.MockOutMakeRepositoryConfig(
+        repository_configs={
+            'test_internal': (None, test_util.StaticCodebaseCreator(
+                {'1001': 'simple_python'})),
+            'test_public': (None, test_util.StaticCodebaseCreator(
+                {'1': 'simple_python'}))
+            })
+
+    FLAGS.internal_revision = '1001'
+    FLAGS.public_revision = '1'
+    FLAGS.project_config_file = test_util.TestResourceFilename(
+        os.path.join('init_codebases', 'project_config.txt'))
+    init_codebases.main([])
 
 
 if __name__ == '__main__':

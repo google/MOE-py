@@ -27,7 +27,7 @@ class MigrationStrategy(object):
 
   def __init__(self, merge_strategy=None, commit_strategy=None,
                separate_revisions=False, copy_metadata=False,
-               default_strategy=None):
+               default_strategy=None, preapprove_public_changelogs=True):
     if not merge_strategy:
       if default_strategy:
         merge_strategy = default_strategy.merge_strategy
@@ -50,6 +50,7 @@ class MigrationStrategy(object):
     self.commit_strategy = commit_strategy
     self.separate_revisions = separate_revisions
     self.copy_metadata = copy_metadata
+    self.preapprove_public_changelogs = preapprove_public_changelogs
 
   def Serialized(self):
     """Serialize the migration strategy."""
@@ -58,6 +59,7 @@ class MigrationStrategy(object):
     result[u'commit_strategy'] = self.commit_strategy
     result[u'separate_revisions'] = self.separate_revisions
     result[u'copy_metadata'] = self.copy_metadata
+    result[u'preapprove_public_changelogs'] = self.preapprove_public_changelogs
     return result
 
   def __eq__(self, other):
@@ -66,7 +68,9 @@ class MigrationStrategy(object):
     return (self.merge_strategy == other.merge_strategy and
             self.commit_strategy == other.commit_strategy and
             self.separate_revisions == other.separate_revisions and
-            self.copy_metadata == other.copy_metadata)
+            self.copy_metadata == other.copy_metadata and
+            (self.preapprove_public_changelogs ==
+             other.preapprove_public_changelogs))
 
 
 class MoeProjectConfig(object):
@@ -117,14 +121,16 @@ def DefaultImportStrategy():
   """Generates the default import migration strategy."""
   return MigrationStrategy(merge_strategy=base.MERGE,
                            commit_strategy=base.LEAVE_PENDING,
-                           separate_revisions=False, copy_metadata=False)
+                           separate_revisions=False, copy_metadata=False,
+                           preapprove_public_changelogs=False)
 
 
 def DefaultExportStrategy():
   """Generates the default export migration strategy."""
   return MigrationStrategy(merge_strategy=base.OVERWRITE,
                            commit_strategy=base.LEAVE_PENDING,
-                           separate_revisions=False, copy_metadata=False)
+                           separate_revisions=False, copy_metadata=False,
+                           preapprove_public_changelogs=True)
 
 
 def _MigrationStrategyFromJson(strategy_json, default_strategy=None):
@@ -132,13 +138,16 @@ def _MigrationStrategyFromJson(strategy_json, default_strategy=None):
     return default_strategy
   config_utils.CheckJsonKeys('strategy', strategy_json,
                              [u'merge_strategy', u'commit_strategy',
-                              u'separate_revisions', u'copy_metadata'])
+                              u'separate_revisions', u'copy_metadata',
+                              u'preapprove_public_changelogs'])
 
   return MigrationStrategy(
       merge_strategy=strategy_json.get(u'merge_strategy'),
       commit_strategy=strategy_json.get(u'commit_strategy'),
       separate_revisions=strategy_json.get(u'separate_revisions'),
       copy_metadata=strategy_json.get(u'copy_metadata'),
+      preapprove_public_changelogs=
+      strategy_json.get(u'preapprove_public_changelogs'),
       default_strategy=default_strategy)
 
 
@@ -227,7 +236,7 @@ class EmptyRepositoryConfig(base.RepositoryConfig):
   def __init__(self):
     self.additional_files_re = None
 
-  def MakeRepository(self, translators=None):
+  def MakeRepository(self):
     return None, None
 
   def Serialized(self):

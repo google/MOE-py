@@ -1,7 +1,7 @@
 # Edit these to your needs.
 
-PREFIX=/opt/local
-UTFPREFIX=/opt/local
+PREFIX=/usr/local
+UTFPREFIX=/usr/local
 
 CC=gcc
 CFLAGS=-I$(UTFPREFIX)/include

@@ -277,6 +277,25 @@ class CommentScrubberTest(basetest.TestCase):
         whitelist.Whitelist([whitelist_entry]))
     self.assertPublish(scrubber, '// xxxsupersecretxxx')
 
+  def testNonDocumentationCommentScrubber(self):
+    """All non-documentation comments should be removed."""
+
+    scrubber = comment_scrubber.AllNonDocumentationCommentScrubber()
+    self.assertRevision(scrubber, '',
+                        '/* C comment */')
+    self.assertRevision(scrubber, '',
+                        '// C++ comment.')
+    self.assertRevision(scrubber, '',
+                        '# Python comment')
+    self.assertPublish(scrubber,
+                       '/** Javadoc comment */')
+    self.assertPublish(scrubber,
+                       '"""Python docstring"""')
+    self.assertPublish(scrubber,
+                       '// Copyright Google 2011. All rights reserved.')
+    self.assertPublish(scrubber,
+                       '/* Copyright 2011. */')
+
   def AuthorDeclarationScrubber(self):
     return comment_scrubber.AuthorDeclarationScrubber(
         username_filter=usernames.UsernameFilter(

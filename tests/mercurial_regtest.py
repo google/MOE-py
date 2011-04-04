@@ -34,10 +34,9 @@ class MercurialTest(basetest.TestCase):
     self.assertNotEqual('47b097c7d97e', REPO.GetHeadRevision())
 
   def testRevisionsSinceEquivalence(self):
-    db = test_util.MockDbClient()
-    equiv = base.Correspondence('1001', '2996fd487ac1')
-    db.NoteEquivalence(equiv)
-    rs, eqs = REPO.RevisionsSinceEquivalence('ceadf5c0ce18', base.PUBLIC, db)
+    def Revision2b02deffcc80(r):
+      return r.rev_id == '2b02deffcc80'
+    rs = REPO.RecurUntilMatchingRevision('ceadf5c0ce18', Revision2b02deffcc80)
     rev_ids = [r.rev_id for r in rs]
     self.assertListEqual(['ceadf5c0ce18', '47b097c7d97e', '2b02deffcc80'],
                          rev_ids)

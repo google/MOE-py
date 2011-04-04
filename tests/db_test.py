@@ -313,6 +313,22 @@ class MoeDbTest(basetest.TestCase):
         InternalRevision('1003', project))
     self.assertDictEqual(migration.Dict(), expected.Dict())
 
+  def testFinishedMigration(self):
+    project_with = self._CreateProject('WithFinishedMigration',
+                                       with_equivalence=True)
+    client_with = self._client
+    project_without = self._CreateProject('WithoutFinishedMigration',
+                                   with_equivalence=True)
+    client_without = self._client
+
+    migration_id = client_with.NoteMigration(
+        base.Migration.EXPORT,
+        InternalRevision('1002', project_with),
+        PublicRevision('2', project_with))
+
+    self.assertTrue(client_with.GetMigration(migration_id))
+    self.assertEqual(None, client_without.GetMigration(migration_id))
+
   def testLongChangelog(self):
     project = self._CreateProject('LongLog', with_equivalence=True)
     changelog = resources.GetResource(TestResourceName('long_changelog.txt'))
@@ -485,7 +501,7 @@ class MoeDbTest(basetest.TestCase):
         changelog='sample changelog')
     comments = Get(
         'comments',
-        {'migration_id': migration_id})['comments']
+        {'migration_id': migration_id, 'project_name': 'Comments'})['comments']
     self.assertEqual(0, len(comments))
 
     comment_data = {
@@ -496,12 +512,15 @@ class MoeDbTest(basetest.TestCase):
         'author': 'nicksantos',
         'text': 'This code is terrible',
     }
+    post_data = comment_data.copy()
+    post_data['project_name'] = project.name
     last_comment_id = Post(
-        'add_comment', comment_data)['comment_id']
+        'add_comment', post_data)['comment_id']
 
     comments = Get(
         'comments',
-        {'migration_id': migration_id})['comments']
+        {'migration_id': migration_id,
+         'project_name': project.name})['comments']
     self.assertEqual(1, len(comments))
     for key in comment_data.keys():
       self.assertEqual(comment_data[key], comments[0][key],
@@ -510,9 +529,10 @@ class MoeDbTest(basetest.TestCase):
     Post(
         'edit_comment',
         {'comment_id': last_comment_id,
-         'comment_text': 'This code looks good to me'})
+         'comment_text': 'This code looks good to me',})
     comments = Get('comments',
-        {'migration_id': migration_id})['comments']
+        {'migration_id': migration_id,
+         'project_name': project.name})['comments']
     self.assertEqual('This code looks good to me', comments[0]['text'])
 
   def testApproveMigration(self):
@@ -522,20 +542,23 @@ class MoeDbTest(basetest.TestCase):
         changelog='sample changelog')
     comments = Get(
         'comments',
-        {'migration_id': migration_id})['comments']
+        {'migration_id': migration_id,
+         'project_name': project.name })['comments']
     comment_data_1 = {
         'migration_id': migration_id,
         'text': 'indent +2',
+        'project_name': project.name
     }
     comment_data_2 = {
         'migration_id': migration_id,
         'text': 'Needs a semicolon',
+        'project_name': project.name,
     }
     comment_id_1 = Post('add_comment', comment_data_1)['comment_id']
     comment_id_2 = Post('add_comment', comment_data_2)['comment_id']
 
     Post('approve_migration',
-         {'migration_id': migration_id})
+         {'migration_id': migration_id, 'project_name': project.name})
 
     server_migration = self._client.MigrationInfo(migration_id, False)
     self.assertEqual('Approved', server_migration['status'])
@@ -543,9 +566,11 @@ class MoeDbTest(basetest.TestCase):
 
     # Unapprove and re-approve.
     Post('unapprove_migration',
-         {'migration_id': migration_id})
+         {'migration_id': migration_id,
+          'project_name': project.name})
     Post('approve_migration',
          {'migration_id': migration_id,
+          'project_name': project.name,
           'changelog': 'real changelog',
           'comment_id_0': comment_id_1,
           'comment_text_0': 'indent +4',
@@ -556,12 +581,24 @@ class MoeDbTest(basetest.TestCase):
     self.assertEqual('real changelog', server_migration['changelog'])
 
     comments = Get('comments',
-        {'migration_id': migration_id})['comments']
+        {'migration_id': migration_id,
+         'project_name': project.name })['comments']
     comments_dict = {}
     for c in comments:
       comments_dict[c['comment_id']] = c['text']
     self.assertEqual('indent +4', comments_dict[comment_id_1])
     self.assertEqual('oh, i see the semicolon', comments_dict[comment_id_2])
+
+  def testPreApprovedMigration(self):
+    project = self._CreateProject('PreApprovedMigration')
+    migration_id = self._client.StartMigration(
+        base.Migration.EXPORT, InternalRevision('1003', project),
+        changelog='sample changelog', pre_approved=True)
+
+    server_migration = self._client.MigrationInfo(migration_id, False)
+
+    self.assertEqual('Approved', server_migration['status'])
+    self.assertEqual('sample changelog', server_migration['changelog'])
 
   def testRecentHistory(self):
     project = self._CreateProject('RecentHistory')
