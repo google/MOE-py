@@ -74,6 +74,8 @@ VERIFICATION_INVALID = 2
 
 VERIFICATION_NAMES = ['Unverified', 'Verified', 'Invalid']
 
+# The revision id placeholder in review thread urls.
+REV_ID_VAR = '${REV_ID}'
 
 class Error(Exception):
   """Base class for MOE exceptions."""
@@ -690,6 +692,24 @@ def ConcatenateChangelogs(revisions):
   return '\n'.join(logs)
 
 
+def FormatReviewThreadLine(rev_id, review_thread_url):
+  """Format review thread url and replace ${REV_ID} with the revision id.
+
+  Args:
+    rev_id: The revision id.
+    review_thread_url: Link to the review thread, containing ${REV_ID} instead
+        of the actual revision id.
+
+  Returns:
+    The review thread URL and some blurb to put in the changelog.
+  """
+  if review_thread_url:
+    return ('\tOriginal review thread: ' +
+            review_thread_url.replace(REV_ID_VAR, rev_id) + '\n')
+  else:
+    return ''
+
+
 class FileDifference(object):
   """Describes how files are different.
 
@@ -707,25 +727,22 @@ class FileDifference(object):
     self.reason = None
 
   def __str__(self):
-    if self.reason:
-      return self.reason
-    return '[Unknown]'
+    return '%s: %s' % (self.relative_filename, self.reason or '[Unknown]')
 
 
-def AreFilesDifferent(file1, file2, relative_filename=''):
+def AreFilesDifferent(file1, file2, relative_filename='',
+                      record_full_diffs=False):
   """Diff file1 and file2.
 
   Args:
     file1: str, path to file1
     file2: str, path to file2
     relative_filename: str, the relative filename
+    record_full_diffs: bool, whether to record full diff output
 
   Returns:
     FileDifference (or None, if not different)
   """
-  args = {}
-  args['stderr'] = open('/dev/null', 'w')
-  args['stdout'] = open('/dev/null', 'w')
   difference = FileDifference(relative_filename)
   # We want to generate diffs even if one file doesn't exist.
   if not os.path.exists(file1):
@@ -742,12 +759,26 @@ def AreFilesDifferent(file1, file2, relative_filename=''):
   if IsExecutable(file1) != IsExecutable(file2):
     difference.reason = 'Executable bit differs'
     return difference
-  p = subprocess.Popen(['diff', '-q', file1, file2], **args)
-  p.wait()
+
+  p = None
+  dev_null = open('/dev/null', 'w')
+  diff_reason = 'File contents differ'
+  if record_full_diffs:
+    p = subprocess.Popen(['diff', file1, file2],
+                         stdout=subprocess.PIPE, stderr=dev_null)
+    stdoutlines = p.communicate()[0].splitlines()
+    diff_reason += ':\n%s' % '\n'.join(stdoutlines[:10])
+    if len(stdoutlines) > 10:
+      diff_reason += '\n...Truncated...'
+  else:
+    p = subprocess.Popen(['diff', '-q', file1, file2],
+                         stdout=dev_null, stderr=dev_null)
+    p.wait()
 
   if p.returncode:
-    difference.reason = 'File contents differ'
+    difference.reason = diff_reason
     return difference
+
   return None
 
 
@@ -755,16 +786,17 @@ class CodebaseDifference(object):
   """Describes how codebases are different.
 
   Includes only the differences that are interesting.
+    print_full_diffs: bool, whether to print all file differences in __str__
   """
 
-  def __init__(self):
+  def __init__(self, record_full_diffs=False):
     # TODO(dbentley): storing only the first difference is a hack
     # to enable short-circuiting. This was premature optimization.
     self.first_difference = None
-    self.first_difference_reason = None
     self.codebase1_only = []
     self.codebase2_only = []
     self.differences = []
+    self.record_full_diffs = record_full_diffs
 
   def __str__(self):
     message = ''
@@ -772,8 +804,10 @@ class CodebaseDifference(object):
       message = 'Missing from codebase 1: %s\n' % ','.join(self.codebase1_only)
     if self.codebase2_only:
       message += 'Missing from codebase 2: %s\n' % ','.join(self.codebase2_only)
-    if self.first_difference_reason:
-      message += '%s\n' % self.first_difference_reason
+    if not self.record_full_diffs and self.first_difference:
+      message += '%s\n' % str(self.first_difference)
+    if self.record_full_diffs and self.differences:
+      message += '\n'.join([str(d) for d in self.differences])
 
     if message:
       return message
@@ -784,13 +818,12 @@ class CodebaseDifference(object):
 
   def AddDifference(self, file_difference):
     if not self.first_difference:
-      self.first_difference = file_difference.relative_filename
-      self.first_difference_reason = '%s: %s' % (
-          file_difference.relative_filename, str(file_difference))
+      self.first_difference = file_difference
     self.differences.append(file_difference)
 
 
-def AreCodebasesDifferent(codebase1, codebase2, noisy_files_re=None):
+def AreCodebasesDifferent(codebase1, codebase2, noisy_files_re=None,
+                          record_full_diffs=False):
   """Determines whether two Codebases are different, and how.
 
   NB(dbentley): this takes Codebase objects, and replaces an older method
@@ -802,6 +835,7 @@ def AreCodebasesDifferent(codebase1, codebase2, noisy_files_re=None):
     noisy_files_re: str, regular expression of files that are "noisy", that is,
                     they change so often that we should not consider their
                     differences.
+    record_full_diffs: bool, whether to record full diff output
 
   Returns:
     CodebaseDifference, or None if no difference
@@ -810,7 +844,7 @@ def AreCodebasesDifferent(codebase1, codebase2, noisy_files_re=None):
     noisy_files_re = re.compile(noisy_files_re)
 
   relative_files = set(codebase1.Walk()).union(codebase2.Walk())
-  result = CodebaseDifference()
+  result = CodebaseDifference(record_full_diffs=record_full_diffs)
 
   for relative_filename in relative_files:
     if noisy_files_re and noisy_files_re.search(relative_filename):
@@ -818,7 +852,8 @@ def AreCodebasesDifferent(codebase1, codebase2, noisy_files_re=None):
     file_difference = AreFilesDifferent(
         codebase1.FilePath(relative_filename),
         codebase2.FilePath(relative_filename),
-        relative_filename)
+        relative_filename,
+        record_full_diffs)
     if file_difference:
       result.AddDifference(file_difference)
 

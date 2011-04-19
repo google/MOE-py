@@ -52,6 +52,9 @@ class MercurialClient(base.CodebaseClient):
 
     self.checkout = os.path.abspath(checkout)
 
+    if not IsSupportedVersion(RunHg(['version'], need_stdout=True)):
+      raise base.Error('Please install Mercurial 1.6 or higher')
+
   def Checkout(self):
     """Check out code."""
     if not self.checked_out:
@@ -394,7 +397,16 @@ USER_RE = re.compile('^user:.*[\s<]([^\s<>]+@[^\s<>]+).*$')
 DATE_RE = re.compile('^date:\d*(.*)$')
 FILES_RE = re.compile('^files:.*$')
 DESCRIPTION_RE = re.compile('^description:\d*(.*)$')
+VERSION_RE = re.compile('version (\d+)\\.(\d+)[^\d]')
 
+def IsSupportedVersion(version):
+  """Only Mecurial 1.6+ is supported."""
+  matched = VERSION_RE.search(version)
+  if matched:
+    major = int(matched.group(1))
+    minor = int(matched.group(2))
+    return (major == 1 and minor >= 6) or major > 1
+  return False
 
 def ParseRevisions(log, repository_name):
   """Extract separate revisions out of the output of a verbose hg log call."""

@@ -22,7 +22,8 @@ class GitClient(base.CodebaseClient):
   """Implementation for Git-stored codebases."""
 
   def __init__(self, temp_dir, repository_url, branch='',
-               gerrit_autoapprove=False):
+               gerrit_autoapprove=False, gerrit_needs_verify=False,
+               review_thread_url=None):
     """Create GitClient.
 
     Git supports several transports: ssh:// is used with an ssh-agent and the
@@ -37,10 +38,16 @@ class GitClient(base.CodebaseClient):
       branch: branch to work with, if not the default
       gerrit_autoapprove: true to approve via gerrit, otherwise git push should
                           just work.
+      gerrit_needs_verify: true to tag the change as verified. Some gerrit
+                           configs exclude this from the workflow, and
+                           attempting to tag as verified will fail.
+      review_thread_url: The review thread URL with ${REVI_ID} as placeholder.
     """
     self.repository_url = repository_url
     self.branch = branch
     self.gerrit_autoapprove = gerrit_autoapprove
+    self.gerrit_needs_verify = gerrit_needs_verify
+    self.review_thread_url = review_thread_url
     if gerrit_autoapprove:
       match = re.match(r'ssh://(.*?):(\d+)/(.*)$', repository_url)
       if not match:
@@ -120,24 +127,33 @@ class GitClient(base.CodebaseClient):
   def MakeEditor(self, migration_strategy, revisions=None):
     """Make an editor for this client."""
     return GitEditor(self, migration_strategy=migration_strategy,
-                     revisions=revisions)
+                     revisions=revisions,
+                     gerrit_needs_verify=self.gerrit_needs_verify,
+                     review_thread_url=self.review_thread_url)
 
 
 class GitEditor(base.CodebaseEditor):
   """An editor for making one push in a git client."""
 
-  def __init__(self, client, migration_strategy, revisions=None):
+  def __init__(self, client, migration_strategy, revisions=None,
+               gerrit_needs_verify=False,
+               review_thread_url=None):
     """Construct.
 
     Args:
       client: GitClient, the git client to use
       migration_strategy: base.MigrationStrategy
-      revisions: list of base.Revision, the list of revisions to migrate,
+      revisions: list of base.GitRevision, the list of revisions to migrate,
                  if known
+      gerrit_needs_verify: true to tag the change as verified. Some gerrit
+                           configs exclude this from the workflow, and
+                           attempting to tag as verified will fail.
     """
     base.CodebaseEditor.__init__(self)
     self.client = client
     self.revisions = revisions or []
+    self.gerrit_needs_verify = gerrit_needs_verify
+    self.review_thread_url = review_thread_url
     self.commit_strategy = migration_strategy.commit_strategy
     self._modified = None
     self._diff = None
@@ -200,7 +216,6 @@ class GitEditor(base.CodebaseEditor):
   def FinalizeChange(self, commit_message, report):
     """Describe the state we're in."""
     self._commit_message = commit_message
-    # TODO(user): Need export flag for P4 CL number(s) in commit message.
     msg_filename = os.path.join(self.client.checkout, '.git-commit.tmp')
     if os.path.exists(msg_filename):
       raise RuntimeError('%s exists, but I want to put commit message there' %
@@ -259,9 +274,14 @@ class GitEditor(base.CodebaseEditor):
           self.RunGit(['push', self.client.repository_url],
                       unhook_stdout_and_err=True)
       if self.client.gerrit_autoapprove:
-        self.RunGerrit(['review', '--verified=+1', '--code-review=+2',
-                        '--submit', '--project=%s' % self.client.gerrit_path,
-                        commit_id], unhook_stdout_and_err=True)
+        gerrit_args = ['review',
+                       '--code-review=+2',
+                       '--submit',
+                       '--project=%s' % self.client.gerrit_path]
+        if self.gerrit_needs_verify:
+          gerrit_args.append('--verified=+1')
+        gerrit_args.append(commit_id)
+        self.RunGerrit(gerrit_args, unhook_stdout_and_err=True)
     return commit_id
 
   def Diff(self):
@@ -307,14 +327,19 @@ class GitEditor(base.CodebaseEditor):
 class GitRepository(base.SourceControlRepository):
   """A Git repository."""
 
-  def __init__(self, repository_url, name, branch, gerrit_autoapprove):
+  def __init__(self, repository_url, name, branch, gerrit_autoapprove,
+               gerrit_needs_verify, review_thread_url=None):
     self._url = repository_url
     self._name = name
     self._branch = branch
     self._gerrit_autoapprove = gerrit_autoapprove
+    self._gerrit_needs_verify = gerrit_needs_verify
+    self._review_thread_url = review_thread_url
     self._client = GitClient(moe_app.RUN.temp_dir, repository_url,
                              branch=branch,
-                             gerrit_autoapprove=gerrit_autoapprove)
+                             gerrit_autoapprove=gerrit_autoapprove,
+                             gerrit_needs_verify=gerrit_needs_verify,
+                             review_thread_url=review_thread_url)
 
   def Export(self, directory, revision=''):
     """Export repository at revision into directory."""
@@ -383,7 +408,7 @@ class GitRepository(base.SourceControlRepository):
     else:
       args += ['HEAD']
     text = self._client.RunGit(args, need_stdout=True)
-    return ParseRevisions(text, self._name)
+    return ParseRevisions(text, self._name, self._review_thread_url)
 
   def MakeRevisionFromId(self, rev_id):
     return base.Revision(rev_id=rev_id, repository_name=self._name)
@@ -421,7 +446,7 @@ AUTHOR_RE = re.compile('^Author:.*[\s<]([^\s<>]+@[^\s<>]+).*$')
 DATE_RE = re.compile('^Date:\d*(.*)$')
 
 
-def ParseRevisions(log, repository_name):
+def ParseRevisions(log, repository_name, review_thread_url=None):
   """Extract separate revisions out of the output of a verbose git log call."""
   result = []
   description_lines = []
@@ -431,12 +456,13 @@ def ParseRevisions(log, repository_name):
   for line in log.splitlines():
     if COMMIT_RE.match(line):
       if rev_id:
-        result.append(base.Revision(
+        result.append(GitRevision(
             rev_id=rev_id,
             repository_name=repository_name,
             time=time,
             author=author,
-            changelog='\n'.join(description_lines)))
+            changelog='\n'.join(description_lines),
+            review_thread_url=review_thread_url))
         rev_id = None
         time = None
         author = None
@@ -449,13 +475,39 @@ def ParseRevisions(log, repository_name):
     else:
       description_lines.append(line)
   if rev_id:
-    result.append(base.Revision(
+    result.append(GitRevision(
         rev_id=rev_id,
         repository_name=repository_name,
         time=time,
         author=author,
-        changelog='\n'.join(description_lines)))
+        changelog='\n'.join(description_lines),
+        review_thread_url=review_thread_url))
   return result
+
+def GitRevision(rev_id, repository_name, time, author, changelog,
+                     review_thread_url=None):
+  """Generate Git-specific information for the revision.
+
+  Args:
+    rev_id: The commit id of the Git change.
+    repository_name: The name of the repo.
+    time: Time of commit
+    author: Author of the commit
+    changelog: The Git changelog
+    review_thread_url: URL to the review thread, with ${REV_ID} as placeholder
+        for the CL number.
+
+  Returns:
+    base.Revision
+  """
+  if review_thread_url:
+    changelog = (base.FormatReviewThreadLine(rev_id, review_thread_url) +
+                 changelog)
+  return base.Revision(rev_id=rev_id,
+                       repository_name=repository_name,
+                       time=time,
+                       author=author,
+                       changelog=changelog)
 
 
 class GitRepositoryConfig(base.RepositoryConfig):
@@ -466,8 +518,10 @@ class GitRepositoryConfig(base.RepositoryConfig):
       raise base.Error('type %s is not git' % config_json['type'])
     self.url = config_json['url']
     self.branch = config_json['branch']
-    self.gerrit_autoapprove = config_json['gerrit_autoapprove']
     # TODO(user): Check self.gerrit_autoapprove for booleanness
+    self.gerrit_autoapprove = config_json.get('gerrit_autoapprove') == 'True'
+    self.gerrit_needs_verify = config_json.get('gerrit_needs_verify') == 'True'
+    self.review_thread_url = config_json.get('review_thread_url')
     self.additional_files_re = config_json.get('additional_files_re')
     self._config_json = config_json
     if repository_name:
@@ -480,7 +534,9 @@ class GitRepositoryConfig(base.RepositoryConfig):
     repository = GitRepository(self.url,
                                self._repository_name,
                                self.branch,
-                               self.gerrit_autoapprove)
+                               self.gerrit_autoapprove,
+                               self.gerrit_needs_verify,
+                               review_thread_url=self.review_thread_url)
     return (repository,
             codebase_utils.ExportingCodebaseCreator(
                 repository,

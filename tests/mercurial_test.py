@@ -25,6 +25,31 @@ FLAGS = flags.FLAGS
 SCENARIOS_DIR = ''
 UNRUN_SCENARIOS = None
 
+SUPPORTED_VERSION = """
+Mercurial Distributed SCM (version 1.6)
+
+Copyright (C) 2005-2010 Matt Mackall <mpm@selenic.com> and others
+This is free software; see the source for copying conditions. There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+"""
+
+SUPPORTED_VERSION_2 = """
+Mercurial Distributed SCM (version 1.8.1+84-3be7ba94baaf)
+(see http://mercurial.selenic.com for more information)
+
+Copyright (C) 2005-2011 Matt Mackall and others
+This is free software; see the source for copying conditions. There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+"""
+
+UNSUPPORTED_VERSION = """
+Mercurial Distributed SCM (version 1.4.3)
+
+Copyright (C) 2005-2010 Matt Mackall <mpm@selenic.com> and others
+This is free software; see the source for copying conditions. There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+"""
+
 
 def setUp():
   global SCENARIOS_DIR
@@ -47,6 +72,12 @@ class MercurialTest(basetest.TestCase):
     self.mox.UnsetStubs()
     self.mox.ResetAll()
 
+  def testVersionRegex(self):
+    self.assertTrue(mercurial.IsSupportedVersion(SUPPORTED_VERSION))
+    self.assertTrue(mercurial.IsSupportedVersion(SUPPORTED_VERSION_2))
+    self.assertFalse(mercurial.IsSupportedVersion(UNSUPPORTED_VERSION))
+    self.assertFalse(mercurial.IsSupportedVersion(''))
+
   def testShortLog(self):
     self.RunScenario('short_log', FilterLog)
 
@@ -65,20 +96,26 @@ class MercurialTest(basetest.TestCase):
     basetest.DiffTestFiles(expected, out_file)
 
   def testRecurUntilMatchingRevision(self):
+    self.mox.StubOutWithMock(mercurial, 'RunHg')
+    mercurial.RunHg(['version'], need_stdout=True).AndReturn('(version 1.8)')
+    self.mox.ReplayAll()
+
     repos = mercurial.MercurialRepository(
         'http://not_a_url', 'Dummy mercurial repository')
+    self.mox.UnsetStubs()
+
     log_file = os.path.join(SCENARIOS_DIR, 'long_log', 'input')
     log_text = file_util.Read(log_file)
     def Revisionb05847911039(r):
       return r.rev_id == 'b05847911039'
 
     self.mox.StubOutWithMock(repos._client, 'RunHg')
-
     repos._client.RunHg(['pull']).AndReturn(None)
     repos._client.RunHg(['log', '--style', 'default', '-v', '-l',
                          '400', '-r', 'dummy:0'],
                         need_stdout=True).AndReturn(log_text)
     self.mox.ReplayAll()
+
     result = repos.RecurUntilMatchingRevision('dummy', Revisionb05847911039)
     self.assertEqual(3, len(result))
     self.assertEqual('b05847911039', result[-1].rev_id)

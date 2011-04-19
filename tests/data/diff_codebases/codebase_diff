@@ -1,0 +1,12 @@
+missingline: File contents differ:
+3d2
+< c
+differentlines: File contents differ:
+4c4
+< winter
+---
+> spring
+7c7
+< discontent
+---
+> satisfaction
