@@ -44,6 +44,13 @@ class GitTest(basetest.TestCase):
   def testLongLog(self):
     self.RunScenario('long_log', FilterLog)
 
+  def testHeadRevisionError(self):
+    client = git.GitClient(
+        os.path.join(FLAGS.test_tmpdir, 'testHeadRevisionError'),
+        'http://localhost:8080/')
+    result = client.GetHeadRevision('1')
+    self.assertFalse(result)
+
   def RunScenario(self, scenario_name, filter_to_test):
     UNRUN_SCENARIOS.remove(scenario_name)
     scenario_base = os.path.join(SCENARIOS_DIR, scenario_name)

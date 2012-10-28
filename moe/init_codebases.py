@@ -144,7 +144,7 @@ class InitCodebasesContext(object):
         moe_app.RUN.report.AddTodo('Project in equivalence. Begin managing by '
                                    'running [ manage_codebases --project %s ]'
                                    % self.project.config.name)
-      except base.Error, e:
+      except base.Error as e:
         print e
         print ('The given two revisions (internal %(irev)s, public %(prev)s) '
                'are not equivalent. Check for two revisions that are '

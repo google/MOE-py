@@ -28,30 +28,6 @@ FLAGS = flags.FLAGS
 TEST_DATA_DIR = test_util.TestResourceFilename('comment_scrubber_test/')
 
 
-class FakeScannedFile(object):
-  def __init__(self, filename=None, contents=''):
-    if filename:
-      self._contents = file_util.Read(filename)
-      self._contents_filename = os.path.basename(filename)
-      self.filename = os.path.basename(filename)
-    elif contents:
-      self._contents = contents
-      self._contents_filename = 'not specified'
-      self.filename = 'not specified'
-    else:
-      raise base.Error('at least one of file or contents must be specified')
-    self.new_contents = contents
-
-  def Contents(self):
-    return self._contents.decode('utf-8')
-
-  def ContentsFilename(self):
-    return self._contents_filename
-
-  def WriteContents(self, new_contents):
-    self.new_contents = new_contents
-
-
 class FakeContext(object):
 
   def __init__(self):
@@ -62,7 +38,7 @@ class FakeContext(object):
 
 
 def TestCommentExtractor(test_case, extractor, source_file, expected_file):
-  comments = extractor.ExtractComments(FakeScannedFile(filename=source_file))
+  comments = extractor.ExtractComments(test_util.FakeFile(filename=source_file))
   expected_text = file_util.Read(expected_file)
   expected_json = simplejson.loads(expected_text)
   expected_comments = comment_scrubber.CommentsFromJson(expected_json)
@@ -115,7 +91,7 @@ class ShellLikeCommentExtractorTest(basetest.TestCase):
 class CommentPreservedTest(basetest.TestCase):
   def assertContentsPreserved(self, contents, extractor):
     scrubber = comment_scrubber.CommentScrubber(extractor)
-    fake_file = FakeScannedFile(contents=contents)
+    fake_file = test_util.FakeFile(contents=contents)
     scrubber.ScrubFile(fake_file, None)
     self.assertMultiLineEqual(contents, fake_file.new_contents)
 
@@ -155,7 +131,7 @@ class MoeDirectiveTest(basetest.TestCase):
     scrubber = comment_scrubber.CommentScrubber(extractor)
     scenario_dir = os.path.join(TEST_DATA_DIR, 'directives', scenario_name)
     unstripped = os.path.join(scenario_dir, 'input.txt')
-    file_obj = FakeScannedFile(filename=unstripped)
+    file_obj = test_util.FakeFile(filename=unstripped)
     scrubber.ScrubFile(file_obj, None)
     expected = os.path.join(scenario_dir, 'expected.txt')
     out = os.path.join(FLAGS.test_tmpdir, scenario_name+'.out.txt')
@@ -295,6 +271,25 @@ class CommentScrubberTest(basetest.TestCase):
                        '// Copyright Google 2011. All rights reserved.')
     self.assertPublish(scrubber,
                        '/* Copyright 2011. */')
+    self.assertPublish(scrubber,
+                       '/*-{...}-*/')
+
+  def testAllCommentScrubber(self):
+    scrubber = comment_scrubber.AllCommentScrubber()
+    self.assertRevision(scrubber, '', '/* C comment */')
+    self.assertRevision(scrubber, '', '// C++ comment.')
+    self.assertRevision(scrubber, '', '# Python comment')
+    self.assertRevision(scrubber, '', '/** Javadoc comment */')
+    self.assertRevision(scrubber, '', '"""Python docstring"""')
+    self.assertPublish(scrubber,
+                       '// Copyright Google 2011. All rights reserved.')
+    self.assertPublish(scrubber, '/* Copyright 2011. */')
+    self.assertPublish(scrubber, '// MOE:begin_strip')
+    self.assertPublish(scrubber, '/* MOE:end_strip */')
+    self.assertPublish(scrubber, '/* MOE:end_strip_and_replace */')
+    self.assertPublish(scrubber, '/* MOE:insert */')
+    self.assertPublish(scrubber, '// MOE:begin_intracomment_strip')
+    self.assertPublish(scrubber, '/* MOE:end_intracomment_strip */')
 
   def AuthorDeclarationScrubber(self):
     return comment_scrubber.AuthorDeclarationScrubber(
@@ -314,6 +309,9 @@ class CommentScrubberTest(basetest.TestCase):
     self.assertPublish(scrubber, '  Author: publishable@google.com')
 
     self.assertRevision(scrubber, '', '  Author: foo@google.com')
+
+    self.assertPublish(scrubber, '* @author Nicholas.J.Santos@gmail.com')
+    self.assertPublish(scrubber, '* @author chadkillingsorth@missouristate.edu')
 
   def testAuthorsLineInsideCommentBlock(self):
     """The entire author line should be removed from the comment block."""
@@ -348,7 +346,7 @@ class CommentScrubberTest(basetest.TestCase):
 
   def assertContents(self, scrubber, expected_lines, actual_lines):
     context = FakeContext()
-    file_obj = FakeScannedFile(contents=u'\n'.join(actual_lines))
+    file_obj = test_util.FakeFile(contents=u'\n'.join(actual_lines))
     scrubber.ScrubFile(file_obj, context)
     self.assertMultiLineEqual(
         u'\n'.join(expected_lines), file_obj.new_contents)
@@ -357,7 +355,7 @@ class CommentScrubberTest(basetest.TestCase):
     context = FakeContext()
     scrubber = comment_scrubber.CommentScrubber(
         comment_scrubber.CLikeCommentExtractor())
-    file_obj = FakeScannedFile(contents=u'\n'.join(lines))
+    file_obj = test_util.FakeFile(contents=u'\n'.join(lines))
     scrubber.ScrubFile(file_obj, context)
     self.assertEqual(1, len(context.errors))
     error, = context.errors
@@ -377,6 +375,18 @@ class CommentScrubberTest(basetest.TestCase):
     self.assertContentsError(['/* MOE:end_intracomment_strip */'])
     self.assertContentsError(['/* MOE:end_intracomment_strip',
                               ' * MOE:begin_intracomment_strip */'])
+    self.assertContentsError(['/* MOE:begin_strip',
+                              ' * MOE:strip_line',
+                              ' * MOE:end_strip */'])
+    self.assertContentsError(['/* MOE:insert MOE:',
+                              ' * MOE:strip_line',
+                              ' * MOE:end_intracomment_strip */'])
+    self.assertContentsError(['/* MOE:insert MOE:',
+                              ' * MOE:strip_line',
+                              ' * MOE:end_intracomment_strip */'])
+    self.assertContentsError(['/* Block comment',
+                              ' * MOE:strip_line',
+                              ' */'])
 
   def CheckReplace(self, extractor, test_cases):
     for input_text, expected in test_cases:
@@ -452,6 +462,87 @@ class CommentScrubberTest(basetest.TestCase):
     self.assertEqual('foo', extractor.CommentWithoutDelimiters('//foo'))
     self.assertRaises(base.Error, extractor.CommentWithoutDelimiters,
                       '<!-- whoops */')
+
+  def testStripLineDirectiveC(self):
+    scrubber = comment_scrubber.CommentScrubber(
+        comment_scrubber.CLikeCommentExtractor())
+    self.assertContents(
+        scrubber,
+        ['int a;',
+         'int c;'],
+        ['int a;',
+         '// MOE:strip_line',
+         'int c;'])
+    self.assertContents(
+        scrubber,
+        ['int a;',
+         'int c;'],
+        ['int a;',
+         'int b; // MOE:strip_line The preceding relies on the magic seed 42',
+         'int c;'])
+    self.assertContents(
+        scrubber,
+        ['int a;',
+         'int c;'],
+        ['int a;',
+         'int b;  // MOE:strip_line',
+         'int c;'])
+    self.assertContents(
+        scrubber,
+        ['int a;',
+         'int c;'],
+        ['int a;',
+         'int b1;  // MOE:strip_line',
+         'int b2;  // MOE:strip_line',
+         'int c;'])
+    self.assertContents(
+        scrubber,
+        ['int a;',
+         'int c;'],
+        ['int a;',
+         'int b;  // This line and comment are secret. MOE:strip_line',
+         'int c;'])
+    self.assertContents(
+        scrubber,
+        ['int a;',
+         'int c;'],
+        ['int a;',
+         'int b;  /* MOE:strip_line */',
+         'int c;'])
+
+  def testStripLineDirectivePython(self):
+    scrubber = comment_scrubber.CommentScrubber(
+        comment_scrubber.PythonCommentExtractor())
+    self.assertContents(
+        scrubber,
+        ['a = ""',
+         'c = a'],
+        ['a = ""',
+         'b = a  # MOE:strip_line',
+         'c = a'])
+
+  def testStripLineDirectiveShell(self):
+    scrubber = comment_scrubber.CommentScrubber(
+        comment_scrubber.ShellLikeCommentExtractor())
+    self.assertContents(
+        scrubber,
+        ['a=""',
+         'c=a'],
+        ['a=""',
+         'b=a  # MOE:strip_line',
+         'c=a'])
+
+  def testStripLineDirectiveHtml(self):
+    scrubber = comment_scrubber.CommentScrubber(
+        comment_scrubber.HtmlCommentExtractor())
+    self.assertContents(
+        scrubber,
+        ['a = ""',
+         'c = a'],
+        ['a = ""',
+         'b = a  <!-- MOE:strip_line -->',
+         'c = a'])
+
 
 if __name__ == '__main__':
   basetest.main()

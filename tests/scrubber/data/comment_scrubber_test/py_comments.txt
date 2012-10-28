@@ -36,8 +36,8 @@
 
   {
     "filename": "test_file.py.txt",
-    "line": 19,
-    "char_index": 318,
+    "line": 23,
+    "char_index": 419,
     "text": "# stdout"
   }
 ]

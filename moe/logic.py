@@ -34,12 +34,23 @@ def VerifyEquivalences(db, internal_repository, public_repository):
       new_equivalence = base.Correspondence(verified_internal_revision,
                                             verified_public_revision)
       db.NoteEquivalence(new_equivalence)
+
     if (verified_internal_revision != e.internal_revision or
         verified_public_revision != e.public_revision):
-      moe_app.RUN.ui.Info(
-          ('Found invalid Equivalence. (Replaced with:)\n'
-           'Internal Revision: %s (%s)\n'
-           'Public Revision: %s (%s)') %
-          (e.internal_revision, verified_internal_revision,
-           e.public_revision, verified_public_revision))
+
+      if verified_internal_revision and verified_public_revision:
+        moe_app.RUN.ui.Info(
+            ('Found invalid Equivalence. (Replaced with:)\n'
+             'Internal Revision: %s (%s)\n'
+             'Public Revision: %s (%s)') %
+            (e.internal_revision, verified_internal_revision,
+             e.public_revision, verified_public_revision))
+      else:
+        moe_app.RUN.ui.Info(
+            ('Found invalid Equivalence.\n'
+             'Internal Revision: %s\n'
+             'Public Revision: %s') %
+            (e.internal_revision, e.public_revision))
+
+
       db.NoteEquivalence(e, verification_status=base.VERIFICATION_INVALID)

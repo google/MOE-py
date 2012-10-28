@@ -9,22 +9,7 @@ __author__ = 'dbentley@google.com (Daniel Bentley)'
 from google.apputils import basetest
 from moe.scrubber import base
 from moe.scrubber import java_scrubber
-
-
-class FakeFileObj(object):
-  def __init__(self, contents, filename='not actually needed'):
-    self._contents = contents
-    self.filename = filename
-    self.deleted = False
-
-  def Contents(self):
-    return self._contents
-
-  def WriteContents(self, new_contents):
-    self._contents = new_contents
-
-  def Delete(self):
-    self.deleted = True
+import test_util
 
 
 class FakeContext(object):
@@ -36,40 +21,50 @@ class FakeContext(object):
 
 
 class JavaScrubberTest(basetest.TestCase):
-  def setUp(self):
-    self.scrubber = java_scrubber.EmptyJavaFileScrubber(base.ACTION_ERROR)
-
-  def assertMeaningful(self, text, filename=''):
-    if not self.scrubber.IsMeaningfulJavaFile(
-        FakeFileObj(text, filename), None):
+  def assertMeaningful(self, text, filename=None):
+    scrubber = java_scrubber.EmptyJavaFileScrubber(base.ACTION_DELETE)
+    file_obj = test_util.FakeFile(text, filename)
+    scrubber.BatchScrubFiles([file_obj], None)
+    if file_obj.deleted:
       self.fail('Text %s is not meaningful, but should be' % text)
 
-  def assertNotMeaningful(self, text, filename=''):
-    if self.scrubber.IsMeaningfulJavaFile(
-        FakeFileObj(text, filename), None):
-      self.fail('Text %s is meaningful, but should not be' % text)
+  def assertNotMeaningful(self, text, filename=None):
+    scrubber = java_scrubber.EmptyJavaFileScrubber(base.ACTION_DELETE)
+    file_obj = test_util.FakeFile(text, filename)
+    scrubber.BatchScrubFiles([file_obj], None)
+    if not file_obj.deleted:
+      self.fail('Text %s is not meaningful, but should be' % text)
 
   def testError(self):
     scrubber = java_scrubber.EmptyJavaFileScrubber(base.ACTION_ERROR)
-    fake_file = FakeFileObj('')
+    fake_file = test_util.FakeFile('')
     fake_context = FakeContext()
-    scrubber.ScrubFile(fake_file, fake_context)
+    scrubber.BatchScrubFiles([fake_file], fake_context)
     self.assert_(fake_context.error_added, 'ScrubFile did not error')
 
   def testDelete(self):
     scrubber = java_scrubber.EmptyJavaFileScrubber(base.ACTION_DELETE)
-    fake_file = FakeFileObj('')
+    fake_file = test_util.FakeFile('', 'EmptyFile.java')
     fake_context = FakeContext()
-    scrubber.ScrubFile(fake_file, fake_context)
+    scrubber.BatchScrubFiles([fake_file], fake_context)
     self.assert_(fake_file.deleted, 'ScrubFile did not delete')
 
   def testRaises(self):
     scrubber = java_scrubber.EmptyJavaFileScrubber(base.ACTION_IGNORE)
-    fake_file = FakeFileObj('')
+    fake_file = test_util.FakeFile('', 'EmptyFile.java')
     fake_context = FakeContext()
     self.assertRaises(base.Error,
-                      scrubber.ScrubFile,
-                      fake_file, fake_context)
+                      scrubber.BatchScrubFiles,
+                      [fake_file], fake_context)
+
+  def testBatch(self):
+    scrubber = java_scrubber.EmptyJavaFileScrubber(base.ACTION_DELETE)
+    empty_file = test_util.FakeFile('', 'EmptyFile.java')
+    nonempty_file = test_util.FakeFile('public class Foo {}', 'Foo.java')
+    fake_context = FakeContext()
+    scrubber.BatchScrubFiles([empty_file, nonempty_file], fake_context)
+    self.assert_(empty_file.deleted, 'ScrubFile did not delete empty file')
+    self.assert_(not nonempty_file.deleted, 'ScrubFile deleted non-empty file')
 
   def testJavaMeaningfulness(self):
     self.assertMeaningful('public class Foo;')
@@ -99,7 +94,7 @@ class CoalesceBlankLinesScrubberTest(basetest.TestCase):
     if not expected:
       expected = original
 
-    fake_file = FakeFileObj(original)
+    fake_file = test_util.FakeFile(original)
     scrubber.ScrubFile(fake_file, None)
     self.assertMultiLineEqual(expected, fake_file.Contents())
 
@@ -130,20 +125,29 @@ class TestSizeAnnotationScrubberTest(basetest.TestCase):
     if expected is None:
       expected = original
 
-    fake_file = FakeFileObj(original)
+    fake_file = test_util.FakeFile(original)
     self.scrubber.ScrubFile(fake_file, None)
     self.assertMultiLineEqual(expected, fake_file.Contents())
 
   def testScrubTestSizes(self):
     self.assertTestSizeScrubbed('class Foo {\n  public void testFoo {\n  }\n}')
     self.assertTestSizeScrubbed(
-        '@Smoke\nclass Foo {\n  public void testFoo {\n  }\n}',
+        '@Sequential\nclass Foo {\n  public void testFoo {\n  }\n}',
+        '\nclass Foo {\n  public void testFoo {\n  }\n}')
+    self.assertTestSizeScrubbed(
+        '@Sequential\nclass Foo {\n  public void testFoo {\n  }\n}',
         '\nclass Foo {\n  public void testFoo {\n  }\n}')
     self.assertTestSizeScrubbed(
         'class Foo {\n  @SmallTest\n  public void testFoo {\n  }\n}',
         'class Foo {\n\n  public void testFoo {\n  }\n}')
     self.assertTestSizeScrubbed(
+        'class Foo {\n  @MediumTest\n  public void testFoo {\n  }\n}',
+        'class Foo {\n\n  public void testFoo {\n  }\n}')
+    self.assertTestSizeScrubbed(
         'class Foo {\n  @MediumTest(banana)\n  public void testFoo {\n  }\n}',
+        'class Foo {\n\n  public void testFoo {\n  }\n}')
+    self.assertTestSizeScrubbed(
+        'class Foo {\n  @LargeTest\n  public void testFoo {\n  }\n}',
         'class Foo {\n\n  public void testFoo {\n  }\n}')
     self.assertTestSizeScrubbed(
         'class Foo {\n  @LargeTest(foo=bar)\n  public void testFoo {\n  }\n}',
@@ -159,7 +163,7 @@ class JavaRenameTest(basetest.TestCase):
                         filename=''):
     scrubber = java_scrubber.JavaRenameScrubber(internal_package,
                                                 public_package)
-    f = FakeFileObj(text, filename)
+    f = test_util.FakeFile(text, filename)
     scrubber.ScrubFile(f, None)
     if f.Contents() != text:
       self.fail("Text %s was scrubbed, but shouldn't be" % text)
@@ -168,7 +172,7 @@ class JavaRenameTest(basetest.TestCase):
                      filename=''):
     scrubber = java_scrubber.JavaRenameScrubber(internal_package,
                                                 public_package)
-    f = FakeFileObj(text, filename)
+    f = test_util.FakeFile(text, filename)
     scrubber.ScrubFile(f, None)
     if f.Contents() == text:
       self.fail("Text %s was not scrubbed, but should've been" % text)

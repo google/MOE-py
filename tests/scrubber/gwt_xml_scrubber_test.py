@@ -8,27 +8,7 @@ __author__ = 'arb@google.com (Anthony Baxter)'
 
 from google.apputils import basetest
 from moe.scrubber import gwt_xml_scrubber
-
-
-class FakeFileObj(object):
-  def __init__(self, contents, filename='foo.gwt.xml'):
-    self._contents = contents
-    self.filename = filename
-    self.deleted = False
-    self.written = False
-
-  def Contents(self):
-    return self._contents
-
-  def ContentsFilename(self):
-    return self.filename
-
-  def WriteContents(self, new_contents):
-    self._contents = new_contents
-    self.written = True
-
-  def Delete(self):
-    self.deleted = True
+import test_util
 
 
 class GwtXmlScrubberTest(basetest.TestCase):
@@ -37,21 +17,21 @@ class GwtXmlScrubberTest(basetest.TestCase):
     self.scrubber = gwt_xml_scrubber.GwtXmlScrubber(set(['foo.bar', 'cat.dog']))
 
   def assertScrubbing(self, contents, expected):
-    fake_file = FakeFileObj(contents)
+    fake_file = test_util.FakeFile(contents, 'fake_file.gwt.xml')
     self.scrubber.ScrubFile(fake_file, None)
     basetest.DiffTestStrings(expected, fake_file.Contents())
 
   def testFilesUntouched(self):
-    fake_file = FakeFileObj('', 'goo.xml')
+    fake_file = test_util.FakeFile('', 'goo.xml')
     self.scrubber.ScrubFile(fake_file, None)
     self.assertFalse(fake_file.written)
-    fake_file = FakeFileObj('<module></module>')
+    fake_file = test_util.FakeFile('<module></module>')
     self.scrubber.ScrubFile(fake_file, None)
     self.assertFalse(fake_file.written)
 
   def testScrubbing(self):
     contents = '<module><inherits name="banana.banana"/></module>'
-    fake_file = FakeFileObj(contents)
+    fake_file = test_util.FakeFile(contents)
     self.scrubber.ScrubFile(fake_file, None)
     self.assertEquals(contents, fake_file.Contents())
 
@@ -70,7 +50,7 @@ class GwtXmlScrubberTest(basetest.TestCase):
                                     '</module>',
                                     '']))
 
-  def testScrubbingAllModulesScrubed(self):
+  def testScrubbingAllModulesScrubbed(self):
     self.assertScrubbing('<?xml version="1.0"  ?><module>'
                          '<inherits name="foo.bar"/>'
                          '<inherits name="cat.dog"/>'

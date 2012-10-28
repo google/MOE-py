@@ -1,0 +1,6 @@
+{
+  "regex_replacements": [
+    {"original": "\\bGTEST\\b", "replacement": "GUNIT"},
+    {"original": "#(\\s*)include \"foo/", "replacement": "#\\1include \"public/"}
+  ]
+}

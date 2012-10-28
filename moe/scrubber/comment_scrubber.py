@@ -3,6 +3,7 @@
 
 """A library for scrubbing text that appears in comments of code."""
 
+import collections
 import re
 import StringIO
 import subprocess
@@ -43,17 +44,23 @@ class Comment(object):
                                       self.text)
 
 
-def CommentsFromJson(comments_json):
+def CommentsFromJson(comments_json, filename_substitutions=None):
   """Generate a list of Comment objects from a JSON list."""
+  filename_substitutions = filename_substitutions or {}
   result = []
   for comment_json in comments_json:
     config_utils.CheckJsonKeys('comment', comment_json,
                                [u'filename', u'line', u'text', u'char_index'])
-    result.append(Comment(comment_json.get(u'filename', ''),
+    filename = comment_json.get(u'filename', '')
+    result.append(Comment(filename_substitutions.get(filename, filename),
                           comment_json.get(u'line', 0),
                           comment_json.get(u'char_index', 0),
                           comment_json.get(u'text', '')))
   return result
+
+
+def GetMoeDirectives(comment_text):
+  return list(MOE_DIRECTIVE_RE.finditer(comment_text))
 
 
 class Error(Exception):
@@ -77,8 +84,8 @@ class _CommentScrubberError(Error):
     self.reason = reason
 
 
-class CommentScrubber(base.FileScrubber):
-  """Find the comments in this file and scrub those comments."""
+class CommentScrubber(base.FileScrubber, base.BatchFileScrubber):
+  """Find the comments in one or more files and scrub those comments."""
 
   def __init__(self, extractor, comment_scrubbers=None):
     """Initialize.
@@ -102,11 +109,32 @@ class CommentScrubber(base.FileScrubber):
       file_obj: ScannedFile, the file in which to scrub comments
       context: ScrubberContext, the context to operate in
     """
-    new_contents = self.DetermineNewContents(file_obj, context)
+    stopwatch.sw.start('extract_comments')
+    comments = self._extractor.ExtractComments(file_obj)
+    stopwatch.sw.stop('extract_comments')
+
+    new_contents = self.DetermineNewContents(file_obj, comments, context)
     if new_contents != file_obj.Contents():
       file_obj.WriteContents(new_contents)
 
-  def DetermineNewContents(self, file_obj, context):
+  def BatchScrubFiles(self, file_objs, context):
+    """Scrub the comments in file_objs in context.
+
+    Args:
+      file_objs: seq(ScannedFile), the files in which to scrub comments
+      context: ScrubberContext, the context to operate in
+    """
+    stopwatch.sw.start('extract_comments')
+    comments_by_filename = self._extractor.BatchExtractComments(file_objs)
+    stopwatch.sw.stop('extract_comments')
+
+    for file_obj in file_objs:
+      new_contents = self.DetermineNewContents(
+          file_obj, comments_by_filename.get(file_obj.filename, []), context)
+      if new_contents != file_obj.Contents():
+        file_obj.WriteContents(new_contents)
+
+  def DetermineNewContents(self, file_obj, comments, context):
     """Determine the new contents of scrubbing a file.
 
     This method is the functional version of ScrubFile, useful
@@ -115,15 +143,12 @@ class CommentScrubber(base.FileScrubber):
 
     Args:
       file_obj: ScannedFile, the file in which to scrub comments
+      comments: seq(Comment), the comments extracted from this file
       context: ScrubberContext, the context to operate in
 
     Returns:
       str, the new contents of the file.
     """
-    stopwatch.sw.start('extract_comments')
-    comments = self._extractor.ExtractComments(file_obj)
-    stopwatch.sw.stop('extract_comments')
-
     contents = file_obj.Contents()
     # We depend on the CPython optimization for string += to happen in constant
     # time, even though maybe we shouldn't, because we may have to strip space
@@ -151,10 +176,17 @@ class CommentScrubber(base.FileScrubber):
       if comment_text and behavior is INCLUDE:
         new_contents += comment_text
 
-      if behavior is INCLUDE and (old_behavior is STRIP or not comment_text):
+      if (behavior is INCLUDE and
+          (old_behavior is STRIP_BLOCK or not comment_text)):
         # Strip up to and including the last newline if we've just finished a
         # strip block, or we just stripped an entire comment.
         new_contents = _StripTrailingSpaceAndNewline(new_contents)
+
+      if behavior is STRIP_LINE:
+        # Removes the line containing the strip directive by deleting
+        # everything after the last newline.
+        new_contents = new_contents.rpartition('\n')[0]
+        behavior = INCLUDE
 
       # Move char_i to the end of the comment.
       comment_text = comment.text
@@ -170,16 +202,16 @@ class CommentScrubber(base.FileScrubber):
 
     Args:
       comment_text: str, the text of the comment
-      current_behavior: {INCLUDE, STRIP} the current behavior
+      current_behavior: {INCLUDE, STRIP_BLOCK, STRIP_LINE} the current behavior
 
     Returns:
       (new comment text, new behavior)
-      (str, {INCLUDE, STRIP})
+      (str, {INCLUDE, STRIP_BLOCK, STRIP_LINE})
 
     Raises:
       _CommentScrubberError: if an error occurred processing this comment.
     """
-    directives = list(MOE_DIRECTIVE_RE.finditer(comment_text))
+    directives = GetMoeDirectives(comment_text)
     if not directives:
       return (comment_text, current_behavior)
 
@@ -196,12 +228,12 @@ class CommentScrubber(base.FileScrubber):
     directive = directive_match.group(1)
 
     if directive == BEGIN_STRIP:
-      if current_behavior is STRIP:
+      if current_behavior is not INCLUDE:
         raise _CommentScrubberError(
             directive,
             'Comment %s says to begin stripping, but already doing so' %
             comment_text)
-      return ('', STRIP)
+      return ('', STRIP_BLOCK)
 
     elif directive == END_STRIP:
       if current_behavior is INCLUDE:
@@ -222,13 +254,26 @@ class CommentScrubber(base.FileScrubber):
       return (new_text, INCLUDE)
 
     elif directive == INSERT:
-      if current_behavior is STRIP:
+      if current_behavior is not INCLUDE:
         raise _CommentScrubberError(
             directive,
             'Comment %s says to insert, but currently stripping' %
             comment_text)
       new_text = _GetReplacementText(comment_text, self._extractor)
       return (new_text, INCLUDE)
+
+    elif directive == STRIP:
+      if current_behavior is not INCLUDE:
+        raise _CommentScrubberError(
+            directive,
+            'Comment %s says to strip line, but already stripping block' %
+            comment_text)
+      is_block_comment = len(comment_text.splitlines()) > 1
+      if is_block_comment:
+        raise _CommentScrubberError(
+            directive,
+            '%s directive not allowed in block comment' % STRIP)
+      return ('', STRIP_LINE)
 
     else:
       raise _CommentScrubberError(
@@ -283,8 +328,19 @@ class CommentScrubber(base.FileScrubber):
 class CommentExtractor(object):
   """An interfact that can extract the comments from a file."""
 
+  def BatchExtractComments(self, file_objs):
+    """Extract comments from multiple files.
+
+    Args:
+      file_objs: list(ScannedFile), the files to get comments from
+
+    Returns:
+      a dict mapping file_obj.filename to Comment objects for that file
+    """
+    raise NotImplementedError
+
   def ExtractComments(self, file_obj):
-    """Extract comments from file.
+    """Extract comments from a single file.
 
     Args:
       file_obj: ScannedFile, the file to get comments from
@@ -305,11 +361,11 @@ class CommentExtractor(object):
     raise NotImplementedError
 
 
-def ExtractCLikeComments(filename, text, lineno=None, char_index=None):
-  """Extract CLike comments from text.
+def ExtractCLikeComments(file_objs, text=None, lineno=None, char_index=None):
+  """Extract CLike comments from files or text.
 
   Args:
-    filename: The name of the file containing the text.
+    file_objs: seq(ScannedFile), the files to parse
     text: The text itself, as a string.
     lineno: The starting line number of this string
     char_index: The starting char_index of this string
@@ -323,18 +379,33 @@ def ExtractCLikeComments(filename, text, lineno=None, char_index=None):
     larger file.
   """
   extractor_binary = resources.GetResourceFilename(base.ResourceName('comment'))
-  args = [extractor_binary, filename]
-  if lineno is not None or char_index is not None:
-    args += [str(lineno or 1), str(char_index or 0)]
+  args = [extractor_binary, str(lineno or 0), str(char_index or 0)]
+
+  filename_substitutions = {}
+  if text is None:
+    # Files must be written out before comment extraction reads them.
+    for file_obj in file_objs:
+      contents_filename = file_obj.ContentsFilename()
+      filename_substitutions[contents_filename] = file_obj.filename
+      args += [contents_filename]
+  else:
+    args += [file_objs[0].filename]
 
   extractor = subprocess.Popen(args,
                                stdin=subprocess.PIPE,
                                stdout=subprocess.PIPE,
                                stderr=subprocess.PIPE)
-  (stdoutdata, stderrdata) = extractor.communicate(text.encode('utf-8'))
+  # TODO(user): This stdout is large in batch scrubbing, and the subsequent
+  # call to CommentsFromJson produces a large list. Find a way to reduce heap
+  # usage, perhaps by streaming stdout into a comments-by-filename generator.
+  # (This wouldn't be too hard since the comment extractor prints all comments
+  # for one file, then for the next file...) Additionally, the comment extractor
+  # could write its comments-by-filename to disk.
+  (stdoutdata, stderrdata) = extractor.communicate(
+      text and text.encode('utf-8') or '')
   if extractor.returncode:
     logging.error('ERROR EXTRACTING %s', stderrdata)
-  return CommentsFromJson(simplejson.loads(stdoutdata))
+  return CommentsFromJson(simplejson.loads(stdoutdata), filename_substitutions)
 
 
 class CLikeCommentExtractor(CommentExtractor):
@@ -345,8 +416,17 @@ class CLikeCommentExtractor(CommentExtractor):
 
   def ExtractComments(self, file_obj):
     """Call out to comment extractor."""
-    return ExtractCLikeComments(file_obj.filename,
-                                file_obj.Contents())
+    return ExtractCLikeComments([file_obj])
+
+  def BatchExtractComments(self, file_objs):
+    comments_all_files = ExtractCLikeComments(file_objs)
+    return self._MakeCommentsByFilenameDict(comments_all_files)
+
+  def _MakeCommentsByFilenameDict(self, comments_all_files):
+    out_dict = collections.defaultdict(list)
+    for comment in comments_all_files:
+      out_dict[comment.filename].append(comment)
+    return out_dict
 
   def CommentWithoutDelimiters(self, comment_text):
     if comment_text.startswith('//'):
@@ -393,7 +473,7 @@ class HtmlCommentExtractor(CommentExtractor):
         for match in HtmlCommentExtractor.SCRIPT_RE.finditer(p):
           lineno_in_p = p.count('\n', char_index_in_p, match.start(0))
           char_index_in_p = match.start(0)
-          comments += ExtractCLikeComments(file_obj.filename,
+          comments += ExtractCLikeComments([file_obj],
                                            match.group(0),
                                            lineno + lineno_in_p,
                                            char_index + char_index_in_p)
@@ -422,7 +502,8 @@ class HtmlCommentExtractor(CommentExtractor):
 
 
 INCLUDE = object()
-STRIP = object()
+STRIP_BLOCK = object()
+STRIP_LINE = object()
 
 
 class CommentOrientedScrubber(object):
@@ -460,6 +541,7 @@ BEGIN_STRIP = 'begin_strip'
 END_STRIP = 'end_strip'
 END_STRIP_AND_REPLACE = 'end_strip_and_replace'
 INSERT = 'insert'
+STRIP = 'strip_line'
 
 BEGIN_INTRACOMMENT_STRIP = 'begin_intracomment_strip'
 END_INTRACOMMENT_STRIP = 'end_intracomment_strip'
@@ -550,9 +632,25 @@ class AllNonDocumentationCommentScrubber(CommentOrientedScrubber):
   def ScrubComment(self, comment_text, unused_file_obj):
     if COPYRIGHT_RE.match(comment_text):
       return None
+    # Don't scrub GWT JSNI comments that contain executable JavaScript.
+    if comment_text.startswith('/*-{'):
+      return None
     if comment_text.startswith('//') or comment_text.startswith('#') or (
         comment_text.startswith('/*') and not comment_text.startswith('/**')):
       return base.Revision('', 'Removing non-doc comment: %s' % comment_text)
+
+
+class AllCommentScrubber(CommentOrientedScrubber):
+  """Scrub all non-copyright comments without MOE directives."""
+
+  def __init__(self):
+    CommentOrientedScrubber.__init__(self)
+
+  def ScrubComment(self, comment_text, unused_file_obj):
+    if GetMoeDirectives(comment_text) or COPYRIGHT_RE.match(comment_text):
+      return None
+    else:
+      return base.Revision('', 'Removing comment: ' + comment_text)
 
 
 class AuthorDeclarationScrubber(CommentOrientedScrubber):
@@ -592,9 +690,6 @@ class _TokenizingExtractor(object):
   def __init__(self, file_obj):
     self._file_obj = file_obj
     self._comments = None
-    self._last_line_len = 0
-    self._last_row = 1
-    self._line_char_ofs = 0
 
   @staticmethod
   def _IsTripleQuotedString(token_tuple):
@@ -606,7 +701,7 @@ class _TokenizingExtractor(object):
   def _AddComment(self, token_tuple):
     _, token_str, (srow, scol), _, _ = token_tuple
     self._comments.append(
-        Comment(self._file_obj.filename, srow, self._line_char_ofs + scol,
+        Comment(self._file_obj.filename, srow, self._line_ofs[srow] + scol,
                 token_str.strip()))
 
   def _HandleToken(self, token_tuple):
@@ -619,22 +714,18 @@ class _TokenizingExtractor(object):
     self._comments = []
     stopwatch.sw.start('tokenize')
     input_file = StringIO.StringIO(self._file_obj.Contents())  # ergh
+    # This dict holds the character offset in the file for each line.
+    self._line_ofs = {1: 0}
     try:
       for token_tuple in tokenize.generate_tokens(input_file.readline):
-        _, token_str, (srow, _), (erow, _), line = token_tuple
-        if srow > self._last_row:
-          self._line_char_ofs += self._last_line_len
-          self._last_row = srow
-        self._HandleToken(token_tuple)
-        if erow > srow:
-          # Some tokens span multiple lines. Worse, if that token is an
-          # ERRORTOKEN, the line will only contain up to the last newline, but
-          # token_str will eat past the newline. AFAICT, it should end on a
-          # newline, so this should be safe.
-          self._last_row = erow + 1
-          self._line_char_ofs += max(len(line), len(token_str))
+        (srow, _) = token_tuple[2]
 
-        self._last_line_len = len(line)
+        # We always read an entire line at a time, so the current position is
+        # the start of the next one.
+        self._line_ofs[srow+1] = input_file.tell()
+
+        self._HandleToken(token_tuple)
+
     except tokenize.TokenError:
       # Premature EOF; there may be a syntax error, but it doesn't affect
       # comment extraction, and it only happens once the entire input has
@@ -749,8 +840,6 @@ def _StripTrailingSpaceFromLastLines(text):
     The string with whitespace stripped from the last lines of a string.
   """
   trailing_space_re = re.compile(ur'[ \t]+(\n|$)')
-  # Pylint mistakenly thinks i might be uninitialized.
-  # pylint: disable-msg=W0631
   i = -1
   for i in xrange(len(text) - 1, -1, -1):
     if not text[i].isspace():

@@ -1,11 +1,9 @@
 Change 15160563 on 2010/03/31 by johnlenz@johnlenz-home-calendar
 
-       MOE_ALL_PUBLIC
-
        Totally public stuff.
 
        Public:
-       Just a change.
+         same
 
        Tested:
        I ran some tests.
@@ -22,7 +20,8 @@ Change 15162185 on 2010/03/31 by johnlenz@johnlenz-home-src5
 
        Nobody here but us chickens
 
-       MOE_ALL_PUBLIC
+       Public:
+       Same
 
        PRESUBMIT=passed
        R=bowdidge

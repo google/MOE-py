@@ -49,7 +49,7 @@ def Equivalence(internal_revision, public_revision):
 
   Equivalent codebases are likely to have differences between files.
   E.g. if only noisy files differ, the codebases will be different
-  but equivalent.
+/  but equivalent.
 
   An Equivalence is a special case of a Correspondence.
 
@@ -178,7 +178,7 @@ def _Get(url, method, args=None):
 
   try:
     url_result = urllib2.urlopen(url=url)
-  except urllib2.HTTPError, e:
+  except urllib2.HTTPError as e:
     raise base.HttpError('GET failed for %s\nError=%s\nContents=%s'
                     % (url, str(e), e.read()))
 
@@ -214,7 +214,7 @@ def _Post(url, method, data=None):
 
   try:
     url_result = urllib2.urlopen(url=url, data=encoded_data)
-  except urllib2.HTTPError, e:
+  except urllib2.HTTPError as e:
     contents = e.read()
     raise base.HttpError('POST failed for %s\nData=%s\nError=%s\nContents=%s'
                          % (url, encoded_data, str(e), contents),
@@ -224,7 +224,22 @@ def _Post(url, method, data=None):
   return result['data']
 
 
-def MakeProjectContext(create_project=False, acquire_lock=None):
+def MakeProjectContext(create_project=False,
+                       acquire_lock=None):
+  return MakeProjectContextWithoutDefaults(create_project,
+                                           acquire_lock,
+                                           FLAGS.allow_concurrent_instances,
+                                           FLAGS.project,
+                                           FLAGS.project_config_file,
+                                           FLAGS.moe_db_url)
+
+
+def MakeProjectContextWithoutDefaults(create_project,
+                                      acquire_lock,
+                                      allow_concurrent_instances,
+                                      name,
+                                      config_file_path,
+                                      default_moe_db_url):
   """Figure out the MOE project and its context.
 
   This looks at flags, the running database, and the config file.
@@ -256,11 +271,9 @@ def MakeProjectContext(create_project=False, acquire_lock=None):
     The most rigorous definition of this function is its code and test
     (in db_client_test).
   """
-  name = FLAGS.project
-  config_file_path = FLAGS.project_config_file
   config_obj = None
   if acquire_lock is None:
-    acquire_lock = not FLAGS.allow_concurrent_instances
+    acquire_lock = not allow_concurrent_instances
 
   if not name and not config_file_path:
     raise base.Error(
@@ -277,9 +290,16 @@ def MakeProjectContext(create_project=False, acquire_lock=None):
 
   moe_app._Init(name or config_obj.name)
 
-  url = ( (FLAGS['moe_db_url'].present and FLAGS.moe_db_url) or
-          (config_obj and config_obj.moe_db_url) or
-          FLAGS.moe_db_url)
+  url = (default_moe_db_url or
+         (config_obj and config_obj.moe_db_url) or
+         FLAGS.moe_db_url)
+  if config_obj:
+    # If we have a local config file, post that to the server first.
+    # If a project is corrupt, GetStoredProject will fail, so updating
+    # the config file first from local data allows us to bootstrap ourselves
+    # back to a good state.
+    UpdateConfigFile(url, config_obj)
+
   stored_project = GetStoredProject(url, name or config_obj.name)
   if not stored_project:
     if not create_project:
@@ -307,7 +327,15 @@ def MakeProjectContext(create_project=False, acquire_lock=None):
           (stored_project.filename, absolute_config_path))
     config_obj = config.ParseConfigText(current_config_text,
                                         filename=stored_project.filename)
+    UpdateConfigFile(url, config_obj)
 
+  db = ServerBackedMoeDbClient(config_obj, record_process=acquire_lock,
+                               url=url)
+  project_context = moe_project.MoeProjectContext(config_obj, db)
+  return project_context
+
+def UpdateConfigFile(url, config_obj):
+  """Updates the config file"""
   _Post(url, 'update_project',
         {'project_name': config_obj.name,
          'project_config': str(config_obj.Serialized()),
@@ -316,10 +344,6 @@ def MakeProjectContext(create_project=False, acquire_lock=None):
          'public_repository_info': simplejson.dumps(
              config_obj.public_repository_config.Info()),
          })
-  db = ServerBackedMoeDbClient(config_obj, record_process=acquire_lock,
-                               url=url)
-  project_context = moe_project.MoeProjectContext(config_obj, db)
-  return project_context
 
 
 class ServerBackedMoeDbClient(MoeDbClient):
@@ -351,7 +375,7 @@ class ServerBackedMoeDbClient(MoeDbClient):
                    {'project_name': self.project.name,
                     'process_id': self._process_id,
                     'require_lock': record_process})
-      except base.Error, e:
+      except base.Error as e:
         if 'Project already has a running process' in e.contents:
           raise base.Error(
               "Another client is accessing this MOE project. "
@@ -750,7 +774,7 @@ def EncodeRecursively(data):
     if isinstance(data, unicode):
       return data.encode('utf-8')
     return data
-  except UnicodeEncodeError, e:
+  except UnicodeEncodeError as e:
     print repr(data)
     print e
     sys.exit(1)

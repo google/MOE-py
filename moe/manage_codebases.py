@@ -263,7 +263,7 @@ class ManageCodebasesContext(object):
         try:
           # This will fail if a migration has been cancelled.
           migration = self.project.db.GetMigration(r.migration)
-        except base.Error, e:
+        except base.Error as e:
           migration = None
 
         if migration:

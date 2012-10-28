@@ -6,7 +6,15 @@
 
 __author__ = 'dborowitz@google.com (Dave Borowitz)'
 
+import os
+import time
+
+from google.apputils import file_util
+import gflags as flags
 from google.apputils import resources
+from moe.scrubber import base
+
+FLAGS = flags.FLAGS
 
 
 def TestResourceName(name):
@@ -29,3 +37,39 @@ def TestResourceFilename(name):
   """
   name = TestResourceName(name)
   return resources.GetResourceFilename(name.rstrip('/'))
+
+
+class FakeFile(object):
+  """A fake file object that can be useful in unit tests."""
+
+  def __init__(self, contents=None, filename=None):
+    if contents is not None:
+      self._contents = contents
+      self.filename = filename or ('%d_%f.txt' % (hash(contents), time.time()))
+    elif filename is not None:
+      self._contents = file_util.Read(filename)
+      self.filename = os.path.basename(filename)
+    else:
+      raise base.Error('at least one of file or contents must be specified')
+
+    self._contents_filename = os.path.join(
+        FLAGS.test_tmpdir,
+        os.path.basename(self.filename))
+    self.new_contents = contents
+    self.deleted = False
+    self.written = False
+
+  def Contents(self):
+    return self._contents.decode('utf-8')
+
+  def ContentsFilename(self):
+    file_util.Write(self._contents_filename, self._contents)
+    return self._contents_filename
+
+  def WriteContents(self, new_contents):
+    self._contents = new_contents
+    self.new_contents = new_contents
+    self.written = True
+
+  def Delete(self):
+    self.deleted = True

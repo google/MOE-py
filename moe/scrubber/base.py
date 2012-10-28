@@ -10,6 +10,12 @@ import errno
 import os
 import re
 
+import gflags as flags
+
+# As this module imports no other scrubber module, put scrubber-wide flags here
+FLAGS = flags.FLAGS
+flags.DEFINE_string('java', os.getenv('JAVA') or 'java',
+                    'Path to java command.')
 
 # Constants for actions to apply on scrubbed objects.
 ACTION_IGNORE = 'action_ignore'
@@ -79,6 +85,19 @@ class FileScrubber(object):
 
     Args:
       file_obj: ScannedFile, the file to scrub
+      context: ScrubberContext, the context to evaluate it in
+    """
+    raise NotImplementedError
+
+
+class BatchFileScrubber(object):
+  """A scrubber that operates on a list of files, for efficiency reasons."""
+
+  def BatchScrubFiles(self, file_objs, context):
+    """Scrub file_objs in context.
+
+    Args:
+      file_objs: list(ScannedFile), the files to scrub
       context: ScrubberContext, the context to evaluate it in
     """
     raise NotImplementedError

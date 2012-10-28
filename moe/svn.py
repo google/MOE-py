@@ -166,7 +166,9 @@ class SvnClient(base.CodebaseClient):
       print 'Checked out.'
     else:
       status = self.RunSvn(['status', '--xml'], need_stdout=True)
-      status_tree = ElementTree.XML(status)
+      # Here and below, note ElementTree expects bytes, while RunSvn returns
+      # Python unicode strings.
+      status_tree = ElementTree.XML(status.encode('UTF-8'))
       if status_tree.find('entry'):
         raise base.Error(
             'svn checkout in %s has pending modifications; revert or commit '
@@ -284,14 +286,18 @@ class SvnEditor(base.CodebaseEditor):
       raise RuntimeError('%s exists, but I want to put commit message there' %
                          os.path.abspath(msg_filename))
     status = self.RunSvn(['status', '--xml'], need_stdout=True)
-    status_tree = ElementTree.XML(status)
+    status_tree = ElementTree.XML(status.encode('UTF-8'))
     if not status_tree.find('target').find('entry'):
       self._modified = False
       return
     else:
       self._modified = True
 
-    self._diff = self.RunSvn(['diff'], need_stdout=True)
+    try:
+      self._diff = self.RunSvn(['diff'], need_stdout=True)
+    except UnicodeDecodeError:
+      self._diff = '<Error reading diff>'
+
     file_util.Write(msg_filename, commit_message)
 
     patches_message = ('Patches applied against %s in %s' %
@@ -434,7 +440,7 @@ class SvnRepository(base.SourceControlRepository):
         ['log', '--xml', '-l', '1', '-r', '%s:1' %
          (highest_rev_id or 'HEAD'), self._url],
         need_stdout=True)
-    info_tree = ElementTree.XML(info)
+    info_tree = ElementTree.XML(info.encode('UTF-8'))
     log = info_tree.find('logentry')
     i = int(log.get('revision'))
     return str(i)
@@ -486,7 +492,7 @@ def RunSvn(args, **kwargs):
 def ParseRevisions(text, repository_name):
   """Extract separate revisions out of the xml output of an svn log call."""
   # TODO(user): This should always scrub out MOE_MIGRATION lines
-  rev_tree = ElementTree.XML(text)
+  rev_tree = ElementTree.XML(text.encode('UTF-8'))
   result = []
   for entry in rev_tree.findall('logentry'):
     rev_id = entry.get('revision')

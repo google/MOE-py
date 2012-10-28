@@ -89,7 +89,7 @@ class GitClient(base.CodebaseClient):
       try:
         RunGit(args, cwd=os.path.dirname(self.checkout),
                unhook_stdout_and_err=True)
-      except base.CmdError, e:
+      except base.CmdError as e:
         raise base.Error('Failed to clone git repository: ' + str(e))
       print 'Checked out.'
     else:
@@ -106,8 +106,9 @@ class GitClient(base.CodebaseClient):
     if highest_rev_id:
       args += [highest_rev_id]
       if highest_rev_id != 'HEAD' and len(highest_rev_id) != ID_LENGTH:
-        raise base.Error('Received rev id of "%s", expected length %d.'
-                         % (highest_rev_id, ID_LENGTH))
+        print ('Received rev id of "%s", expected length %d.'
+               % (highest_rev_id, ID_LENGTH))
+        return None
     else:
       args += ['HEAD']
     try:

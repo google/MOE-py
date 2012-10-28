@@ -6,6 +6,7 @@
 __author__ = 'dbentley@google.com (Dan Bentley)'
 
 
+import codecs
 import errno
 import os
 import re
@@ -619,7 +620,7 @@ class Revision(object):
     """
     self.rev_id = rev_id
     self.repository_name = repository_name
-    self.changelog = changelog
+    self.changelog = changelog.encode('utf-8')
     self.author = author
     if time and isinstance(time, basestring):
       time = datelib.Timestamp.FromString(time)
@@ -629,8 +630,9 @@ class Revision(object):
     if moe_migration:
       self.migration = moe_migration.group(1)
 
-    self.scrubbed_log = scrubbed_log or changelog
-    self.single_scrubbed_log = single_scrubbed_log or self.scrubbed_log
+    self.scrubbed_log = scrubbed_log.encode('utf-8') or changelog
+    self.single_scrubbed_log = (single_scrubbed_log.encode('utf-8')
+                                or self.scrubbed_log)
     self.pre_approved = pre_approved
 
   def __str__(self):
@@ -973,7 +975,7 @@ def RunCmd(cmd, args, cwd=None, need_stdout=False, print_stdout_and_err=False,
   if print_stdout_and_err and stderr_data:
     sys.stderr.write(stderr_data)
   if need_stdout:
-    return stdout_data
+    return stdout_data.decode('utf-8')
 
 
 class RepositoryConfig(object):
@@ -1048,3 +1050,12 @@ def GetTimestampFromSrcrrTime(timestamp):
   tz = tz.normalize(time).tzinfo
   time = datelib.Timestamp.FromString(timestamp, tz=tz)
   return time
+
+
+def WriteUtf8(filename, contents, mode=0666):
+  """Writes utf-8 contents to a file."""
+  fd = codecs.open(filename, encoding='utf-8', mode='w+')
+  try:
+    fd.write(contents)
+  finally:
+    fd.close()

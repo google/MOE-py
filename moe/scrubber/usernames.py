@@ -74,8 +74,12 @@ class EmailAddressFilter(object):
     self._username_filter = username_filter
 
   USERNAME_RE = re.compile(r'(.*)@google.com')
+  EMAIL_RE = re.compile(r'.*@\w*\.(com|edu|org)')
 
   def CanPublish(self, text_with_email_address):
     username = self.USERNAME_RE.match(text_with_email_address)
-    return (self._username_filter and username and
+    if not username:
+      return self.EMAIL_RE.match(text_with_email_address)
+
+    return (self._username_filter and
             self._username_filter.CanPublish(username.group(1).strip()))

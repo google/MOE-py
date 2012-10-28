@@ -4,6 +4,7 @@ code
 Internal code!
 // MOE:end_strip
 More code
+Sekret code  // MOE:strip_line
 /* MOE:begin_strip */one-line code/* MOE:end_strip */
 Final code
 /*

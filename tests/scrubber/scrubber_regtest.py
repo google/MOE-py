@@ -82,6 +82,9 @@ class ScrubberRegressionTest(basetest.TestCase):
   def testStringReplacement(self):
     self.RunScenario('string_replacement')
 
+  def testRegexReplacement(self):
+    self.RunScenario('regex_replacement')
+
   def testExtensionMap(self):
     self.RunScenario('extension_map')
 
@@ -108,6 +111,12 @@ class ScrubberRegressionTest(basetest.TestCase):
 
   def testErrorInDeletedFile(self):
     self.RunScenario('error_in_deleted_file')
+
+  def testDotfiles(self):
+    self.RunScenario('dotfiles')
+
+  def testScrubAllComments(self):
+    self.RunScenario('scrub_all_comments')
 
   # TODO(dborowitz): More tests with inputs that are known to fail scrubbing.
 

@@ -16,6 +16,10 @@ but not a
 docstring.
 """
 
+unused2 = """I'm a long string
+""" + """ with multiple parts""" + """ starting
+on the same line."""
+
   print "Hello World!"   # stdout
 
 

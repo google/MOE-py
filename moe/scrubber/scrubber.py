@@ -30,6 +30,7 @@ from google.apputils import stopwatch
 from moe import config_utils
 
 from moe.scrubber import base
+from moe.scrubber import c_include_scrubber
 from moe.scrubber import comment_scrubber
 from moe.scrubber import gwt_xml_scrubber
 from moe.scrubber import java_scrubber
@@ -54,6 +55,8 @@ flags.DEFINE_string('config_data', '',
                     'Text of the scrubber config')
 flags.DEFINE_string('explicit_inputfile_list', '',
                     'List of files (with same base directory) to scrub')
+flags.DEFINE_string('temp_dir', '',
+                    'Path of a temporary directory to use')
 
 DIFFS_DIR = 'diffs'
 ORIGINAL_DIR = 'originals'
@@ -72,19 +75,22 @@ class ScrubberConfig(object):
   """
 
   def __init__(self, codebase, input_files, extension_to_scrubber_map,
-               default_scrubbers, modify, output_tar):
+               default_scrubbers, modify, output_tar, temp_dir):
     # Other object state.
     self.codebase = os.path.abspath(codebase)
     self.input_files = input_files
     self.modify = modify
     self.output_tar = output_tar
+    self.temp_dir = temp_dir
     self._comment_scrubbers = None
     self._sensitive_string_scrubbers = None
 
     # General options.
-    # If no ignore_files_re given, then we want to ignore no files, which means
-    # matching no strings. '$a' is a regex that matches no strings.
+    #If no ignore_files_re given, then we want to ignore no files,
+    # which means matching no strings.  Simiarly for
+    # do_not_scrub_files.  '$a' is a regex that matches no strings.
     self.ignore_files_re = re.compile('$a')
+    self.do_not_scrub_files_re = re.compile('$a')
     self.extension_map = []
     self.sensitive_words = []
     self.sensitive_res = []
@@ -92,6 +98,7 @@ class ScrubberConfig(object):
     self.scrub_sensitive_comments = True
     self.rearranging_config = {}
     self.string_replacements = []
+    self.regex_replacements = []
 
     # Username options.
     self.scrubbable_usernames = None
@@ -101,6 +108,10 @@ class ScrubberConfig(object):
     self.scrub_authors = True
     self.scrub_proto_comments = False
     self.scrub_non_documentation_comments = False
+    self.scrub_all_comments = False
+
+    # C/C++-specific options.
+    self.c_includes_config_file = None
 
     # Java-specific options.
     self.scrub_java_testsize_annotations = False
@@ -145,20 +156,25 @@ class ScrubberConfig(object):
       self.extension_to_scrubber_map = extension_to_scrubber_map
     else:
       self._comment_scrubbers = None
-      go_and_c_scrubbers = [
-          comment_scrubber.CommentScrubber(
-              comment_scrubber.CLikeCommentExtractor(),
-              self._CommentScrubbers())
-      ] + self._PolyglotFileScrubbers()
+      go_and_c_scrubbers = self._PolyglotFileScrubbers()
+      if self.c_includes_config_file:
+        go_and_c_scrubbers.append(
+            c_include_scrubber.IncludeScrubber(self.c_includes_config_file))
 
+      # See also _ResetBatchScrubbers() for other scrubbers by extension.
       self.extension_to_scrubber_map = {
           '.go': go_and_c_scrubbers,
           '.h': go_and_c_scrubbers,
           '.c': go_and_c_scrubbers,
           '.cc': go_and_c_scrubbers,
-          '.java': self._MakeJavaScrubbers(),
-          '.js': self._MakeJsScrubbers(),
+          '.hgignore': self._MakeShellScrubbers(),
+          '.gitignore': self._MakeShellScrubbers(),
           '.html': self._MakeHtmlScrubbers(),
+          '.java': self._MakeJavaScrubbers(),
+          '.jj': self._MakeJavaScrubbers(),
+          '.js': self._MakeJsScrubbers(),
+          # .jslib is an output from a js_library build rule
+          '.jslib': self._MakeJsScrubbers(),
           '.l': go_and_c_scrubbers,
           '.php': self._MakePhpScrubbers(),
           '.php4': self._MakePhpScrubbers(),
@@ -167,7 +183,7 @@ class ScrubberConfig(object):
           '.protodevel': self._MakeProtoScrubbers(),
           '.py': self._MakePythonScrubbers(),
           '.css': self._PolyglotFileScrubbers(),
-          '.yaml': self._PolyglotFileScrubbers(),
+          '.yaml': self._MakeShellScrubbers(),
           '.sh': self._MakeShellScrubbers(),
           '.json': self._PolyglotFileScrubbers(),
           '.swig': go_and_c_scrubbers,
@@ -181,10 +197,65 @@ class ScrubberConfig(object):
           '.xml': self._MakeGwtXmlScrubbers(),
           }
 
+    self._ResetBatchScrubbers()
+
     if default_scrubbers is not None:
       self.default_scrubbers = default_scrubbers
     else:
       self.default_scrubbers = self._PolyglotFileScrubbers()
+
+  # NB(yparghi): The "pre- and post-" batch scrubbing flow isn't natural, but
+  # suits our current use cases. Ideally, batch and non-batch scrubbing would
+  # be arranged by an optimized execution graph, where, for example, all the
+  # by-file scrubbers prerequisite to batch scrubber A are executed, then A is
+  # executed, then the next by-file or batch scrubber...
+  def _ResetBatchScrubbers(self):
+    """Set batch scrubbers to run before and after by-file scrubbing.
+
+    See ScrubberContext.Scan below. First, the pre-batch scrubbers are run for
+    applicable files, then by-file scrubbers, then post-batch scrubbers.
+    ("Pre-batch" and "post-batch" are misnomers, but used for simplicity.
+    Respectively, they're really "pre-(by-file)" and "post-(by-file)".)
+    """
+    c_like_comment_pre_batch_scrubbers = [
+        comment_scrubber.CommentScrubber(
+            comment_scrubber.CLikeCommentExtractor(),
+            self._CommentScrubbers())
+        ]
+
+    java_pre_batch_scrubbers = []
+    java_pre_batch_scrubbers.extend(c_like_comment_pre_batch_scrubbers)
+
+    proto_pre_batch_scrubbers = (self.scrub_proto_comments and
+                                 c_like_comment_pre_batch_scrubbers or [])
+
+    self.extension_to_pre_batch_scrubbers_map = {
+        '.c': c_like_comment_pre_batch_scrubbers,
+        '.cc': c_like_comment_pre_batch_scrubbers,
+        '.go': c_like_comment_pre_batch_scrubbers,
+        '.h': c_like_comment_pre_batch_scrubbers,
+        '.java': java_pre_batch_scrubbers,
+        '.jj': java_pre_batch_scrubbers,
+        '.js': c_like_comment_pre_batch_scrubbers,
+        '.jslib': c_like_comment_pre_batch_scrubbers,
+        '.l': c_like_comment_pre_batch_scrubbers,
+        '.php': c_like_comment_pre_batch_scrubbers,
+        '.php4': c_like_comment_pre_batch_scrubbers,
+        '.php5': c_like_comment_pre_batch_scrubbers,
+        '.proto': proto_pre_batch_scrubbers,
+        '.protodevel': proto_pre_batch_scrubbers,
+        '.swig': c_like_comment_pre_batch_scrubbers,
+        }
+
+    java_post_batch_scrubbers = []
+    if self.empty_java_file_action != base.ACTION_IGNORE:
+      java_post_batch_scrubbers.append(
+          java_scrubber.EmptyJavaFileScrubber(self.empty_java_file_action))
+
+    self.extension_to_post_batch_scrubbers_map = {
+        '.java': java_post_batch_scrubbers,
+        '.jj': java_post_batch_scrubbers,
+        }
 
   def _SensitiveStringScrubbers(self):
     if not self._sensitive_string_scrubbers:
@@ -200,6 +271,10 @@ class ScrubberConfig(object):
       r = replacer.ReplacerScrubber(
           (r['original'], r['replacement']) for r in self.string_replacements)
       result.append(r)
+    if self.regex_replacements:
+      r = replacer.RegexReplacerScrubber(
+          (r['original'], r['replacement']) for r in self.regex_replacements)
+      result.append(r)
 
     result += self._SensitiveStringScrubbers()
     return result
@@ -207,7 +282,9 @@ class ScrubberConfig(object):
   def _CommentScrubbers(self):
     if not self._comment_scrubbers:
       self._comment_scrubbers = []
-      if self.scrub_non_documentation_comments:
+      if self.scrub_all_comments:
+        self._comment_scrubbers.append(comment_scrubber.AllCommentScrubber())
+      elif self.scrub_non_documentation_comments:
         self._comment_scrubbers.append(
             comment_scrubber.AllNonDocumentationCommentScrubber())
       self._comment_scrubbers.append(
@@ -247,11 +324,7 @@ class ScrubberConfig(object):
     return html_scrubbers
 
   def _MakeJavaScrubbers(self):
-    java_scrubbers = [
-        comment_scrubber.CommentScrubber(
-            comment_scrubber.CLikeCommentExtractor(),
-            self._CommentScrubbers()),
-        ]
+    java_scrubbers = []
     line_scrubbers = self._PolyglotLineOrientedScrubbers()
     java_scrubbers.append(line_scrubber.LineScrubber(line_scrubbers))
 
@@ -263,18 +336,11 @@ class ScrubberConfig(object):
     if self.maximum_blank_lines:
       java_scrubbers.append(
           java_scrubber.CoalesceBlankLinesScrubber(self.maximum_blank_lines))
-    if self.empty_java_file_action != base.ACTION_IGNORE:
-      java_scrubbers.append(
-          java_scrubber.EmptyJavaFileScrubber(self.empty_java_file_action))
     java_scrubbers.extend(self._PolyglotFileScrubbers())
     return java_scrubbers
 
   def _MakeJsScrubbers(self):
     js_scrubbers = []
-    js_scrubbers.append(
-        comment_scrubber.CommentScrubber(
-            comment_scrubber.CLikeCommentExtractor(),
-            self._CommentScrubbers()))
     line_scrubbers = self._PolyglotLineOrientedScrubbers()
     for js_directory_rename in self.js_directory_renames:
       line_scrubbers.append(js_directory_rename)
@@ -284,10 +350,6 @@ class ScrubberConfig(object):
 
   def _MakePhpScrubbers(self):
     php_scrubbers = []
-    php_scrubbers.append(
-        comment_scrubber.CommentScrubber(
-            comment_scrubber.CLikeCommentExtractor(),
-            self._CommentScrubbers()))
     php_scrubbers.append(line_scrubber.LineScrubber(
         self._PolyglotLineOrientedScrubbers()))
     php_scrubbers.extend(self._PolyglotFileScrubbers())
@@ -317,11 +379,6 @@ class ScrubberConfig(object):
 
   def _MakeProtoScrubbers(self):
     proto_scrubbers = []
-    if self.scrub_proto_comments:
-      proto_scrubbers.append(
-          comment_scrubber.CommentScrubber(
-              comment_scrubber.CLikeCommentExtractor(),
-              self._CommentScrubbers()))
     proto_scrubbers.append(
         line_scrubber.LineScrubber(self._PolyglotLineOrientedScrubbers()))
     proto_scrubbers.extend(self._PolyglotFileScrubbers())
@@ -357,7 +414,12 @@ class ScrubberContext(object):
     self._unscrubbed_files = set()
 
   def CreateTempDir(self):
-    self._temp_dir = tempfile.mkdtemp(prefix='scrubber')
+    self._temp_dir = self.config.temp_dir or tempfile.mkdtemp(prefix='scrubber')
+    base.MakeDirs(self._temp_dir)
+
+  def GetScratchDir(self):
+    """Return a temp directory suitable for writing temporary output."""
+    return os.path.join(self._temp_dir, 'scratch')
 
   def AddError(self, error):
     """Add base.ScrubberError or str error to the list of errors."""
@@ -538,7 +600,7 @@ class ScrubberContext(object):
       else:
         output_relative_filename = relative_filename
       result.append(ScannedFile(
-          full_filename, relative_filename, self._temp_dir,
+          full_filename, relative_filename, self.GetScratchDir(),
           output_relative_filename=output_relative_filename))
     stopwatch.sw.stop('find')
     return result
@@ -549,12 +611,19 @@ class ScrubberContext(object):
       if filename_re.search(filename):
         return extension
     _, extension = os.path.splitext(basename)
+    # If there is no extension, then it may be a dotfile, such as .hgignore.
+    if not extension and filename.startswith('.'):
+      return filename
     return extension
+
+  def ShouldScrubFile(self, file_obj):
+    if (file_obj.IsBinaryFile() or
+        self.config.do_not_scrub_files_re.search(file_obj.relative_filename)):
+      return False
+    return True
 
   def ScrubbersForFile(self, file_obj):
     """Return a seq of base.FileScrubber's appropriate for file_obj."""
-    if file_obj.IsBinaryFile():
-      return []
     extension = self._GetExtension(file_obj.relative_filename)
 
     scrubbers = self.config.extension_to_scrubber_map.get(extension, None)
@@ -565,8 +634,34 @@ class ScrubberContext(object):
       self._unscrubbed_file_extensions.add(extension)
     return self.config.default_scrubbers
 
+  def _RunPreBatchScrubbers(self, file_objs):
+    self._RunBatchScrubbers(self.config.extension_to_pre_batch_scrubbers_map,
+                            file_objs)
+
+  def _RunPostBatchScrubbers(self, file_objs):
+    self._RunBatchScrubbers(self.config.extension_to_post_batch_scrubbers_map,
+                            file_objs)
+
+  def _RunBatchScrubbers(self, batch_scrubbers_map, file_objs):
+    files_by_extension = {}
+    for file_obj in file_objs:
+      ext = self._GetExtension(file_obj.relative_filename)
+      files_by_extension[ext] = files_by_extension.get(ext, []) + [file_obj]
+
+    for (ext, batch_scrubbers) in batch_scrubbers_map.iteritems():
+      for batch_scrubber in batch_scrubbers:
+        if ext in files_by_extension:
+          batch_scrubber.BatchScrubFiles(files_by_extension[ext], self)
+
   def Scan(self):
-    for file_obj in self.files:
+    files_to_scrub = [file_obj for file_obj in self.files if
+                      self.ShouldScrubFile(file_obj)]
+
+    sys.stdout.write('Running initial batch scrubbers...\n')
+    sys.stdout.flush()
+    self._RunPreBatchScrubbers(files_to_scrub)
+
+    for file_obj in files_to_scrub:
       scrubbers = self.ScrubbersForFile(file_obj)
       for scrubber in scrubbers:
         if file_obj.is_deleted:
@@ -579,11 +674,16 @@ class ScrubberContext(object):
 
     sys.stdout.write('\n')
 
+    sys.stdout.write('Running final batch scrubbers...\n')
+    sys.stdout.flush()
+    self._RunPostBatchScrubbers(files_to_scrub)
+
 
 # Top-level scrubber config keys.
 _SCRUBBER_CONFIG_KEYS = [
     # General options
     u'ignore_files_re',
+    u'do_not_scrub_files_re',
     u'extension_map',
     u'sensitive_string_file',
     u'sensitive_words',
@@ -592,7 +692,9 @@ _SCRUBBER_CONFIG_KEYS = [
     u'scrub_sensitive_comments',
     u'rearranging_config',
     u'string_replacements',
+    u'regex_replacements',
     u'scrub_non_documentation_comments',
+    u'scrub_all_comments',
 
     # User options
     u'usernames_to_scrub',
@@ -600,6 +702,9 @@ _SCRUBBER_CONFIG_KEYS = [
     u'usernames_file',
     u'scrub_unknown_users',
     u'scrub_authors',
+
+    # C/C++ options
+    u'c_includes_config_file',
 
     # Java options
     u'empty_java_file_action',
@@ -634,6 +739,7 @@ def ScrubberConfigFromJson(codebase,
                            default_scrubbers=None,
                            modify=False,
                            output_tar='',
+                           temp_dir='',
                            **unused_kwargs):
   """Generate a ScrubberConfig object from a ScrubberConfig JSON object."""
 
@@ -655,10 +761,11 @@ def ScrubberConfigFromJson(codebase,
   config_utils.CheckJsonKeys('scrubber config', config_json,
                              _SCRUBBER_CONFIG_KEYS)
   config = ScrubberConfig(codebase, input_files, extension_to_scrubber_map,
-                          default_scrubbers, modify, output_tar)
+                          default_scrubbers, modify, output_tar, temp_dir)
 
   # General options.
   SetOption(u'ignore_files_re', func=re.compile)
+  SetOption(u'do_not_scrub_files_re', func=re.compile)
   SetOption(u'sensitive_words')
   config.sensitive_words = config_json.get(u'sensitive_words', [])
   SetOption(u'extension_map', func=lambda m: [(re.compile(r), e) for r, e in m])
@@ -683,7 +790,9 @@ def ScrubberConfigFromJson(codebase,
   SetOption(u'scrub_sensitive_comments')
   SetOption(u'rearranging_config')
   SetOption(u'string_replacements')
+  SetOption(u'regex_replacements')
   SetOption(u'scrub_non_documentation_comments')
+  SetOption(u'scrub_all_comments')
 
   # User options.
   # TODO(dborowitz): Make the scrubbers pass unicode to the UsernameFilter.
@@ -697,6 +806,9 @@ def ScrubberConfigFromJson(codebase,
   SetOption(u'scrub_unknown_users')
   SetOption(u'scrub_authors')
   SetOption(u'scrub_proto_comments')
+
+  # C/C++-specific options.
+  SetOption(u'c_includes_config_file')
 
   # Java-specific options.
   action_map = {
@@ -872,7 +984,7 @@ class ScannedFile(object):
     self.Contents()
     if not self.is_modified:
       return self.filename
-    filename = os.path.join(self._temp_dir, 'scratch', self.relative_filename)
+    filename = os.path.join(self._temp_dir, self.relative_filename)
     base.MakeDirs(os.path.dirname(filename))
     self.WriteToFile(filename)
     return filename

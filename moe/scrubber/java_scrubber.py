@@ -22,7 +22,7 @@ class RemoveCommentsScrubber(comment_scrubber.CommentOrientedScrubber):
     return base.Revision('', 'Scrubbing to determine Java meaningfulness')
 
 
-class EmptyJavaFileScrubber(base.FileScrubber):
+class EmptyJavaFileScrubber(base.BatchFileScrubber):
   """Error on java files that contain no class or interface.
 
   Some files are entirely @GoogleInternal. Thus, after scrubbing, they're
@@ -48,29 +48,35 @@ class EmptyJavaFileScrubber(base.FileScrubber):
       action: base.ACTION_* constant, what to do to an unmeaningful file.
     """
     base.FileScrubber.__init__(self)
+    # Use a separate extractor and scrubber. We don't want the scrubber to
+    # actually scrub, but we need to extract comments to pass to
+    # _comment_scrubber.DetermineNewContents.
+    self._extractor = comment_scrubber.CLikeCommentExtractor()
     self._comment_scrubber = comment_scrubber.CommentScrubber(
-        extractor=comment_scrubber.CLikeCommentExtractor(),
+        extractor=None,
         comment_scrubbers=[RemoveCommentsScrubber()])
     self._action = action
 
-  def ScrubFile(self, file_obj, context):
-    if not self.IsMeaningfulJavaFile(file_obj, context):
-      if self._action == base.ACTION_ERROR:
-        context.AddError(
-            base.ScrubberError('EMPTY_JAVA', 'no class', '', file_obj))
-      elif self._action == base.ACTION_DELETE:
-        file_obj.Delete()
-      else:
-        # NB: if action is IGNORE, this will never be created at all.
-        raise base.Error('unknown file action: %s' % repr(self._action))
+  def BatchScrubFiles(self, file_objs, context):
+    comments_by_filename = self._extractor.BatchExtractComments(file_objs)
+    for file_obj in file_objs:
+      if not self.IsMeaningfulJavaFile(file_obj, comments_by_filename, context):
+        if self._action == base.ACTION_ERROR:
+          context.AddError(
+              base.ScrubberError('EMPTY_JAVA', 'no class', '', file_obj))
+        elif self._action == base.ACTION_DELETE:
+          file_obj.Delete()
+        else:
+          # NB: if action is IGNORE, this will never be created at all.
+          raise base.Error('unknown file action: %s' % repr(self._action))
 
-  def IsMeaningfulJavaFile(self, file_obj, context):
+  def IsMeaningfulJavaFile(self, file_obj, comments_by_filename, context):
     if file_obj.filename.endswith('/package-info.java'):
       # "a package-info.java file is barely a java file at all"
       #   -kevinb@google.com, 5/4/2010
       return True
-    contents = self._comment_scrubber.DetermineNewContents(file_obj,
-                                                           context)
+    contents = self._comment_scrubber.DetermineNewContents(
+        file_obj, comments_by_filename[file_obj.filename], context)
     return not JAVA_UNMEANINGFUL_RE.match(contents)
 
 
@@ -99,8 +105,10 @@ class CoalesceBlankLinesScrubber(base.FileScrubber):
     file_obj.WriteContents(new_contents)
 
 
+# The arguments to @MediumTest and @LargeTest are optional.
 TEST_ANNOTATION_RE = re.compile(
-    ' *@((SmallTest|Smoke)|((MediumTest|LargeTest)\([^\)]*\))) *\n')
+    ' *@((Sequential|SmallTest|Smoke)'
+    '|((MediumTest|LargeTest)(\([^\)]*\))?)) *\n')
 
 
 class TestSizeAnnotationScrubber(base.FileScrubber):
