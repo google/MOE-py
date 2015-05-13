@@ -1,0 +1,1 @@
+MOE lets one project be developed in different repositories. Internal development can proceed as it always has, and then changes can be migrated to or from the public repository. It includes a scrubber that can transmogrify code as it goes out or comes in.
